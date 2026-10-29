@@ -1,0 +1,8 @@
+<rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0"><channel>
+<!-- SYNTHETIC test feed for trader-insider: the shape of NSE RSS/Insider_Trading.xml. The second item is real (recorded 2026-10-29). -->
+<title>NSE News - Latest INSIDER TRADING</title><lastBuildDate>Wed, 28 Oct 2026 18:30:00 +0530</lastBuildDate>
+<item><title>Sample Industries Limited</title><link>https://nsearchives.nseindia.com/corporate/xbrl/IT_9000001_SAMPLE_28102026060500_WEB.xml</link><description>TYPE OF SECURITY : Equity Shares</description><pubDate>28-Oct-2026 18:05</pubDate></item>
+<item><title>Sample Industries Limited</title><link>https://nsearchives.nseindia.com/corporate/xbrl/IT_9000001_SAMPLE_28102026060500_WEB.xml</link><description>TYPE OF SECURITY : Equity Shares</description><pubDate>28-Oct-2026 18:05</pubDate></item>
+<item><title>Ravindra Energy Limited</title><link>https://nsearchives.nseindia.com/corporate/xbrl/IT_1197873_1662973_02052026044642_WEB.xml</link><description>TYPE OF SECURITY : Equity Shares</description><pubDate>02-May-2026 16:46</pubDate></item>
+<item><title>Not Recorded Limited</title><link>https://nsearchives.nseindia.com/corporate/xbrl/IT_9000002_MISSING_28102026050000_WEB.xml</link><description>TYPE OF SECURITY : Equity Shares</description><pubDate>28-Oct-2026 17:00</pubDate></item>
+</channel></rss>

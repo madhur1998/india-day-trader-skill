@@ -1,0 +1,6 @@
+{
+  "as_of": "2026-10-28T10:00:00Z",
+  "source": "yahoo daily closes 2026-10-28 (tests/fixtures/_nse/chart-*-6mo-1d.json)",
+  "currency": "INR",
+  "prices": {"RELIANCE": 1158.0, "HDFCBANK": 685.3, "INFY": 1123.15, "SBIN": 956.8, "M&M": 2869.9}
+}

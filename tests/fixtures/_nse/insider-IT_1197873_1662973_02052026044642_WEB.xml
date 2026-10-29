@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xbrli:xbrl xmlns:in-capmkt-types="https://www.nseindia.com/corporates/content/taxonomy/insider_trading_disclosure/core/in-capmkt-types" xmlns:in-capmkt-ent="https://www.nseindia.com/corporates/content/taxonomy/insider_trading_disclosure/in-capmkt-ent-2018-03-31" xmlns:in-capmkt-roles="https://www.nseindia.com/corporates/content/taxonomy/insider_trading_disclosure/xsd/in-capmkt-roles-2018-03-31" xmlns:in-capmkt="https://www.nseindia.com/corporates/content/taxonomy/insider_trading_disclosure/core/in-capmkt" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:nonnum="http://www.xbrl.org/dtr/type/non-numeric" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:net="http://www.xbrl.org/2009/role/net" xmlns:num="http://www.xbrl.org/dtr/type/numeric" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:negated="http://www.xbrl.org/2009/role/negated" xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:xl="http://www.xbrl.org/2003/XLink">
+<link:schemaRef xlink:type="simple" xlink:href="https://www.nseindia.com/corporates/content/taxonomy/insider_trading_disclosure/xsd/in-capmkt-ent-2018-03-31.xsd"/>
+<xbrli:context id="ChangeInHoldingOfSecurities001I"><xbrli:entity><xbrli:identifier scheme="http://www.nseindia.com/NSESymbol">RELTD</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2026-05-02</xbrli:instant></xbrli:period><xbrli:scenario><xbrldi:typedMember dimension="in-capmkt:ChangeInHoldingOfSecuritiesAxis"><in-capmkt:ChangeInHoldingOfSecuritiesDomain>ChangeInHoldingOfSecurities1</in-capmkt:ChangeInHoldingOfSecuritiesDomain></xbrldi:typedMember></xbrli:scenario></xbrli:context>
+<xbrli:unit id="INR"><xbrli:measure>iso4217:INR</xbrli:measure></xbrli:unit><xbrli:unit id="pure"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit><xbrli:unit id="shares"><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unit><xbrli:unit id="INRPerShare"><xbrli:divide><xbrli:unitNumerator><xbrli:measure>iso4217:INR</xbrli:measure></xbrli:unitNumerator><xbrli:unitDenominator><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unitDenominator></xbrli:divide></xbrli:unit>
+<in-capmkt:BSEScripCode contextRef="OneI">504341</in-capmkt:BSEScripCode>
+<in-capmkt:NSESymbol contextRef="OneI">RELTD</in-capmkt:NSESymbol>
+<in-capmkt:MSEISymbol contextRef="OneI">NOTLISTED</in-capmkt:MSEISymbol>
+<in-capmkt:NameOfTheCompany contextRef="OneI">Ravindra Energy Limited</in-capmkt:NameOfTheCompany>
+<in-capmkt:ISIN contextRef="OneI">INE206N01018</in-capmkt:ISIN>
+<in-capmkt:RegulationOfInsiderTrading contextRef="OneI">7(2)</in-capmkt:RegulationOfInsiderTrading>
+<in-capmkt:CategoryOfPerson contextRef="ChangeInHoldingOfSecurities001I">Director</in-capmkt:CategoryOfPerson>
+<in-capmkt:NameOfThePerson contextRef="ChangeInHoldingOfSecurities001I">Shantanu Lath</in-capmkt:NameOfThePerson>
+<in-capmkt:TypeOfInstrument contextRef="ChangeInHoldingOfSecurities001I">Equity Shares</in-capmkt:TypeOfInstrument>
+<in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalNumberOfSecurity contextRef="ChangeInHoldingOfSecurities001I" unitRef="shares" decimals="INF">50000</in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalNumberOfSecurity>
+<in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalPercentageOfShareholding contextRef="ChangeInHoldingOfSecurities001I" unitRef="pure" decimals="INF">0.03</in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalPercentageOfShareholding>
+<in-capmkt:SecuritiesAcquiredOrDisposedNumberOfSecurity contextRef="ChangeInHoldingOfSecurities001I" unitRef="shares" decimals="INF">70000</in-capmkt:SecuritiesAcquiredOrDisposedNumberOfSecurity>
+<in-capmkt:SecuritiesAcquiredOrDisposedValueOfSecurity contextRef="ChangeInHoldingOfSecurities001I" unitRef="shares" decimals="INF">7000000</in-capmkt:SecuritiesAcquiredOrDisposedValueOfSecurity>
+<in-capmkt:SecuritiesAcquiredOrDisposedTransactionType contextRef="ChangeInHoldingOfSecurities001I">Buy</in-capmkt:SecuritiesAcquiredOrDisposedTransactionType>
+<in-capmkt:SecuritiesHeldPostAcquistionOrDisposalNumberOfSecurity contextRef="ChangeInHoldingOfSecurities001I" unitRef="shares" decimals="INF">120000</in-capmkt:SecuritiesHeldPostAcquistionOrDisposalNumberOfSecurity>
+<in-capmkt:SecuritiesHeldPostAcquistionOrDisposalPercentageOfShareholding contextRef="ChangeInHoldingOfSecurities001I" unitRef="pure" decimals="INF">0.07</in-capmkt:SecuritiesHeldPostAcquistionOrDisposalPercentageOfShareholding>
+<in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyFromDate contextRef="ChangeInHoldingOfSecurities001I">2026-04-29</in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyFromDate>
+<in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyToDate contextRef="ChangeInHoldingOfSecurities001I">2026-04-29</in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyToDate>
+<in-capmkt:DateOfIntimationToCompany contextRef="ChangeInHoldingOfSecurities001I">2026-05-02</in-capmkt:DateOfIntimationToCompany>
+<in-capmkt:ModeOfAcquisitionOrDisposal contextRef="ChangeInHoldingOfSecurities001I">ESOP</in-capmkt:ModeOfAcquisitionOrDisposal>
+<in-capmkt:ExchangeOnWhichTheTradeWasExecuted contextRef="ChangeInHoldingOfSecurities001I">NA</in-capmkt:ExchangeOnWhichTheTradeWasExecuted>
+<in-capmkt:ValueInAggregate contextRef="ChangeInHoldingOfSecurities001I" unitRef="INR" decimals="-3">7000000</in-capmkt:ValueInAggregate>
+<in-capmkt:FormName contextRef="ChangeInHoldingOfSecurities001I">E</in-capmkt:FormName>
+</xbrli:xbrl>

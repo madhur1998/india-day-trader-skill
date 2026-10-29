@@ -1,91 +1,105 @@
 ---
 name: trader-scanner
 description: >-
-  Chart Scanner. Scans thousands of charts for setups: opening-range
-  breakouts, flags, oversold bounces. Builds the list of US-listed common
-  stocks, ordinary shares and ADRs from Nasdaq Trader's symbol directories,
-  runs a pre-market scan of daily closes (20-day closing-high breakout, bull
-  flag, reclaimed the 20-day average, oversold, oversold bounce) and an
-  intraday opening-range breakout scan on 5-minute bars, then writes
-  trader/watchlist.json for trader-news and trader-entry. Free Yahoo data,
-  bar by bar. Use when the user says "scan the market", "find me setups",
-  "what is breaking out", "opening range breakouts", "scan for bull flags",
-  "oversold stocks", "pre-market scan", "build my watchlist", "what should I
-  look at today", or at the start of a trading day before /trader-news.
-argument-hint: "[universe | daily | orb] [--at HH:MM]"
+  Chart Scanner for India's NSE. Scans thousands of NSE charts for setups:
+  opening-range breakouts, flags, oversold bounces. Builds the list of
+  EQ-series stocks from NSE's equity list (BE and BZ trade-to-trade stocks
+  out, 2 % and 5 % circuit-band stocks out by default), with Nifty 50 and
+  Nifty 500 presets, runs a pre-market scan of daily closes (20-day
+  closing-high breakout, bull flag, reclaimed the 20-day average, oversold,
+  oversold bounce) with rupee price and turnover floors, and an intraday
+  opening-range breakout scan on 5-minute bars from 9:15 AM IST, then
+  writes trader/watchlist.json for trader-news and trader-entry. Free Yahoo
+  data (.NS symbols), bar by bar. Use when the user says "scan the Nifty",
+  "scan the market", "intraday setups", "NSE breakouts", "find me setups",
+  "what is breaking out", "opening range breakouts", "ORB scan", "scan for
+  bull flags", "oversold stocks", "pre-market scan", "build my watchlist",
+  "what should I look at today", or at the start of a trading day before
+  /trader-news.
+argument-hint: "[universe | daily | orb] [--index nifty50] [--at HH:MM]"
 ---
 
 # trader-scanner
 
 The Chart Scanner is the first step of a day trade. It reads thousands of
-free charts and lists the ones that match a rule. That is all it does. A scan
-is a list of charts that match a rule, not a list of stocks to buy, and a
-setup on a chart is not a prediction. Most people who day trade lose money;
-the scanner does not change that. It only saves you from flipping through
-5,000 charts by hand.
+free NSE charts and lists the ones that match a rule. That is all it does. A
+scan is a list of charts that match a rule, not a list of stocks to buy, and
+a setup on a chart is not a prediction. SEBI's own study found that about 7
+in 10 individual intraday traders in equity cash lost money; the scanner does
+not change that. It only saves you from flipping through 2,000 charts by hand.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scan.py" universe                       # -> trader/universe.txt
-python3 "${CLAUDE_SKILL_DIR}/scan.py" daily                          # before the open -> trader/watchlist.json
-python3 "${CLAUDE_SKILL_DIR}/scan.py" daily --symbols TSLA,NVDA,AMD  # or --watchlist FILE, --limit 200
-python3 "${CLAUDE_SKILL_DIR}/scan.py" orb                            # after 9:50 AM ET -> trader/watchlist.json
-python3 "${CLAUDE_SKILL_DIR}/scan.py" orb --at 10:15                 # cut the clock at 10:15 AM ET
+python3 "${CLAUDE_SKILL_DIR}/scan.py" universe                          # -> trader/universe.txt
+python3 "${CLAUDE_SKILL_DIR}/scan.py" universe --index nifty500         # only the Nifty 500
+python3 "${CLAUDE_SKILL_DIR}/scan.py" daily                             # before 9:15 AM -> trader/watchlist.json
+python3 "${CLAUDE_SKILL_DIR}/scan.py" daily --index nifty50             # or --symbols RELIANCE,SBIN,M&M, --watchlist FILE
+python3 "${CLAUDE_SKILL_DIR}/scan.py" orb                               # after 9:35 AM IST -> trader/watchlist.json
+python3 "${CLAUDE_SKILL_DIR}/scan.py" orb --at 10:15                    # cut the clock at 10:15 AM IST
 python3 "${CLAUDE_SKILL_DIR}/scan.py" orb --watchlist trader/watchlist.json --json
 ```
 
-Flags: `--min-price 5` and `--min-volume` (daily 1,000,000, orb 0),
-`--or-minutes 15`, `--max-confirm 200` (orb stage 2),
-`--now "2026-10-19 10:15"` (New York time) to pin the clock, `--offline PATH`
-to read saved Yahoo files, `--no-write`, `--show N`, `--json`. Exit code 0
-when the scan found something, 1 when it found nothing or could not run (the
-reason is one plain line).
+Flags: `--min-price 50` (rupees), `--min-turnover` in rupees traded, price
+times volume (daily 1e8 = Rs 10 crore, orb 0), `--min-volume` in shares (0),
+`--index nifty50|nifty500`, `--skip-bands 2,5` (universe; `none` keeps every
+band), `--or-minutes 15`, `--max-confirm 200` (orb stage 2),
+`--now "2026-10-28 10:15"` (India time) to pin the clock, `--offline PATH` to
+read saved files, `--lists DIR` for a saved index list, `--no-write`,
+`--show N`, `--json`. Exit code 0 when the scan found something, 1 when it
+found nothing or could not run (the reason is one plain line).
 
 ## What it reads and writes
 
 | file | what |
 | --- | --- |
-| `trader/universe.txt` | written by `universe`: one `SYMBOL\|Name` a line, read by `daily` and `orb` |
-| `trader/watchlist.json` | written by `daily` and `orb`: `mode`, `as_of`, `universe`, `scanned`, `failed`, `hits[]`. trader-news and trader-entry read `hits[].symbol` |
-| `trader/config.json` | read by `orb`: `no_entries_after` (default 15:30) |
+| `trader/universe.txt` | written by `universe`: one `SYMBOL\|Name\|Band` a line, read by `daily` and `orb` |
+| `trader/watchlist.json` | written by `daily` and `orb`: `mode`, `as_of` (IST), `universe`, `scanned`, `failed`, `filters`, `hits[]`. trader-news and trader-entry read `hits[].symbol` |
+| `trader/config.json` | read by `orb`: `no_entries_after` (default 14:45) |
+
+Symbols are NSE's own (`RELIANCE`, `M&M`, `BAJAJ-AUTO`). The tool adds `.NS`
+for Yahoo and encodes the `&` itself.
 
 ## The universe
 
-`universe` downloads `nasdaqlisted.txt` and `otherlisted.txt` from
-nasdaqtrader.com/dynamic/SymDir and keeps a row when, in this order:
+`universe` downloads two public files from NSE's archive host,
+`nsearchives.nseindia.com`, with plain GETs (never the `www.nseindia.com`
+API, which sits behind a bot check):
 
-1. It is not a test issue, not an ETF, not NextShares.
-2. It is a plain ticker: 1 to 5 letters, or 1 to 4 letters plus one class
-   letter after a dot (BRK.B). A `$` preferred (ABR$D) is out, and so is a
-   `.U`, `.W` or `.R` suffix (units, warrants, rights).
-3. Out, whatever else the name says: warrants; SPAC units and rights ("Units,
-   each consisting of", "Rights to receive"); notes, ETNs, debentures; a %
-   coupon; "Depositary Shares" that are not American or Global (those carry a
-   preferred).
-4. In: the name calls it common stock, common shares or units, ordinary
-   shares, shares of beneficial interest, ADS / ADR / American or Global
-   depositary shares, or partnership or trust units.
-5. Out: the name still says unit, right, bond, preferred or preference.
-6. In: everything else (plain names like "AMETEK, Inc.").
+- `content/equities/EQUITY_L.csv`: every listed equity with its series.
+- `content/equities/sec_list.csv`: each security's price band (`No Band`
+  for the F&O stocks, else 2, 5, 10 or 20 %).
 
-On the Oct 19 2026 files this keeps 5,943. The reel said 5,259: that count
-came from an ad hoc filter (names that say common or ordinary, no ADRs). All
-5,259 of those are in this list; the 684 extra are mostly ADRs, closed-end
-funds and partnership units. The Oct 20 files gave 5,942.
+It keeps a row when:
+
+1. Its series is **EQ**. BE and BZ are trade-to-trade (every trade is for
+   delivery, no intraday), and anything else is not a plain equity.
+2. Its price band is not in `--skip-bands` (2 and 5 by default: a stock
+   that hits a 2 % or 5 % circuit cannot be traded out of that day). A stock
+   missing from `sec_list.csv` is kept with band `?`.
+3. With `--index nifty50` or `--index nifty500`: it is in NSE's index list
+   (`content/indices/ind_nifty50list.csv`, `ind_nifty500list.csv`).
+
+On the Oct 29 2026 files: 2,620 rows, 2,368 EQ, and 2,286 after the 5 % band
+(82) is left out (no EQ stock sat in the 2 % band that day). The Nifty 50
+preset keeps all 50 (all `No Band`); the Nifty 500 keeps 493 (two 5 % band
+names out; three REITs, two names moved to BE and a placeholder row are not EQ
+rows of the equity list, and the tool names them).
 
 ## The daily scan (before the open)
 
-Yahoo's spark endpoint returns closes for 20 symbols a request, so 5,942
-symbols take 298 requests. On Oct 20 2026 that took 145 seconds with the
-polite pause (0.3 s). Liquidity comes from the spark meta: last price at
-least `--min-price` and last session's volume at least `--min-volume`. Run it
-before the open or after the close: during the session the volume is the
-day's so far, and today's daily bar is left out until 4:00 PM.
+Yahoo's spark endpoint returns closes for 20 symbols a request, so 2,286
+symbols take 115 requests. Liquidity comes from the spark meta: last price
+at least `--min-price` (Rs 50) and price times volume at least
+`--min-turnover` (Rs 10 crore). Run it before 9:15 AM or after 3:30 PM: during
+the session the volume is the day's so far, and today's daily bar is left out
+until the 3:30 PM close.
 
-The setups are computed from daily closes only (spark has no highs or lows),
-so they are close cousins of the reel's `refs/scan.py`, which used highs and
-lows:
+Yahoo's NSE daily series skips a session for a stock now and then. A chart
+whose last close is older than the latest close in the scan is **stale**: it
+is counted and not scanned, so a setup is never read off an old close.
+
+The setups are computed from daily closes only (spark has no highs or lows):
 
 | setup | the rule on closes |
 | --- | --- |
@@ -95,93 +109,85 @@ lows:
 | `oversold` | RSI 14 (Wilder) under 30 |
 | `oversold_bounce` | RSI 14 was under 30 yesterday and today closed up |
 
-A closing-high breakout fires more often than an intraday-high one (KO on
-Oct 16 broke its 20-day closing high, not its 20-day intraday high). Hits are
-listed most traded first (price times volume).
+Hits are listed most traded first (rupees traded, price times volume).
 
 ## The opening-range breakout scan (during the session)
 
-The opening range is the first `--or-minutes` (15) of the session: the 9:30,
-9:35 and 9:40 five-minute bars. A hit is the first completed 5-minute bar
-to CLOSE above the range high, at that bar's close time.
+NSE trades 9:15 AM to 3:30 PM IST: 75 five-minute bars, 9:15 to 15:25. The
+opening range is the first `--or-minutes` (15) of the session: the 9:15, 9:20
+and 9:25 bars. A hit is the first completed 5-minute bar to CLOSE above the
+range high, at that bar's close time (the 9:30 bar closes at 9:35 AM).
 
 1. Stage 1, every symbol: spark closes of today's 5-minute bars, 20 a
-   request. A chart goes on only if a completed bar after the range closed at
-   or above the highest close of the range. That is a necessary condition
-   (the range high is at least every range close), so no breakout is lost.
+   request. A chart goes on if a completed bar after the range closed at or
+   above the highest close of the range (a necessary condition: the range
+   high is at least every range close), or if a bar after the range is
+   missing in the spark answer (it could be the breakout).
 2. Stage 2, each candidate: the v8 chart with real highs and lows, one
    request each. Range high = the highest high of the range bars, range low =
-   the lowest low. On a strong morning most charts are candidates, so stage 2
-   checks at most `--max-confirm` (200) of them, the most traded first (price
-   times volume so far), and prints PARTIAL with the count it skipped.
+   the lowest low. Stage 2 checks at most `--max-confirm` (200), the most
+   traded first, and prints PARTIAL with the count it skipped.
    `--max-confirm 0` checks them all.
 
-Timing, live on Tue Oct 20 2026 (a strong morning): 100 liquid names at
-10:01 AM took 35 seconds (5 spark requests, 70 v8 charts, 51 of 91 usable
-charts broke out). The whole universe at 10:03 AM took about 4 minutes (298
-spark requests, then 200 v8 charts): 2,448 usable charts, 1,782 candidates,
-the 200 most traded checked, 119 of those broke out. For a fast answer, scan
-the daily watchlist or a list of names you trade (`--watchlist`, `--symbols`).
-
-A chart is usable only when every 5-minute bar from 9:30 to the cutoff is
-there; a missing bar means a halt or a thin stock. Null closes are dropped,
-a bar off the 5-minute grid (the live tick, like 10:58:07) is dropped, and a
-bar counts only once it is complete (start + 5 minutes). Before 9:50 AM, on a
-weekend or holiday, after the close, or after `no_entries_after` (an expired
-setup) it prints one plain line and writes nothing. The 1:00 PM early closes
-are in the calendar.
+A chart is usable when every range bar is there and at most 3 bars after it
+are missing. Yahoo's NSE feed leaves a few bars empty: the 15:20 bar nearly
+every day, often 15:15 or 15:25, a midday bar now and then. A hit that came
+after a missing bar says so (`missing_before`). Null closes are dropped, a
+bar off the 5-minute grid (the live tick, like 13:35:17) is dropped, and a bar
+counts only once it is complete (start + 5 minutes). Before 9:35 AM, on a
+weekend or NSE holiday, after the close, or after `no_entries_after` (an
+expired setup) it prints one plain line and writes nothing.
 
 ## Data and limits
 
 - Yahoo's chart and spark endpoints are free, unofficial and can lag. Bars are
   5-minute bars, bar by bar, never tick by tick. query2 first, query1 on a 429
   or 5xx, one retry after a 5-second wait on a 429.
-- Partial results are said as partial: "Fetched 4,980 of 5,259 charts (279
-  failed or had no data)". Never round a partial scan up to "the whole market".
-- NYSE holidays and early closes for 2026 and 2027 (nyse.com, read 2026-10-13).
+- Partial results are said as partial: "Fetched 19 of 50 charts (31 failed or
+  had no data)". Never round a partial scan up to "the whole market".
+- India time is UTC+5:30 all year; the tool never reads the machine's time
+  zone. NSE holidays for 2026 are built in (NSE's circular). For a date in a
+  year the tool does not carry yet it prints a warning instead of guessing.
+  A Muhurat session (Diwali) uses NSE's announced times once they are in the
+  calendar; until then the day counts as closed and the tool says why.
 
 ## Steps
 
-1. Once a week or so: `scan.py universe`.
+1. Once a week or so: `scan.py universe` (or `--index nifty500` for a
+   quicker, more liquid list).
 2. Before the open: `scan.py daily`. Tell the user the counts (fetched,
-   liquid, scanned, hits) and the top few by setup.
-3. After 9:50 AM ET (10:15 is the classic): `scan.py orb`. Tell the user how
+   liquid, stale, scanned, hits) and the top few by setup.
+3. After 9:35 AM IST (10:15 is the classic): `scan.py orb`. Tell the user how
    many usable charts broke their range and when, and that a later hit is
    closer to the price now.
-4. The user picks one chart. Hand it on: `/trader-news TICKER` (what is moving
-   it), then `/trader-entry TICKER` (the entry bar by bar). Never pick for them.
+4. The user picks one chart. Hand it on: `/trader-news SYMBOL` (what is moving
+   it), then `/trader-entry SYMBOL` (the entry bar by bar). Never pick for them.
 
-## Example: the reel
+## Example: Wed Oct 28 2026
 
-Monday Oct 19 2026, scan at 10:15 AM over the reel's 234-ticker wall
-(`tests/fixtures/trader-scanner/wall5m-2026-10-19.json.gz`, real Yahoo charts):
+Scan at 10:15 AM IST over five real v8 charts (`tests/fixtures/_nse/`):
 
 ```
-python3 scan.py orb --offline wall5m-2026-10-19.json.gz --now "2026-10-19 10:15" --min-price 0
-Fetched 233 of 234 charts (1 failed or had no data); 231 usable; 95 candidates, 95 confirmed with real highs and lows.
-42 of 231 charts closed above their opening-range high by 10:15 AM:
-   9:50 AM  AMC         $2.97  range 2.90 to 2.96  +0.50% over
-  ...
-  10:15 AM  TSLA      $364.18  range 354.47 to 362.18  +0.55% over
+python3 scan.py orb --offline charts/ --now "2026-10-28 10:15"
+Opening-range breakout scan, Wed 2026-10-28 10:15 AM IST: 15-minute range (9:15 AM to 9:30 AM), 5-minute bars, Yahoo.
+Fetched 5 of 5 charts; 5 usable; 5 candidates, 5 confirmed with real highs and lows.
+2 of 5 charts closed above their opening-range high by 10:15 AM:
+   9:45 AM  HDFCBANK        Rs 678.00  range 669.50 to 676.80  +0.18% over
+   9:45 AM  RELIANCE      Rs 1,199.60  range 1187.00 to 1194.80  +0.40% over
 ```
 
-The reel's wall had no price floor (AMC at $2.97 is one of the 42), hence
-`--min-price 0`; with the default $5 floor it is 41. TSLA's range is the 9:30
-to 9:40 bars, high 362.18, low 354.47; the 10:10 bar closed at 364.18, 0.55 %
-over the high, at 10:15 AM. The user picks TSLA and Claude hands it to
-`/trader-news TSLA`, then `/trader-entry TSLA`. In the reel the universe was
-5,259 US stocks; this tool's rule gives 5,943 on the same files.
-
-The pre-market scan that morning (closes through Fri Oct 16, the reel's daily
-charts) tags BLK, CI, XOM and HD a 20-day breakout, CCL a bull flag, F, JPM
-and GE a reclaim of the 20-day average, and BAC, MS, RIVN and PLUG oversold,
-as the reel did. On closes it also tags KO (breakout), RCL (flag) and PNC (an
-oversold bounce).
+RELIANCE's range is the 9:15 to 9:25 bars, high 1194.80, low 1187.00; the
+9:40 bar closed at 1199.60, 0.40 % over the high, at 9:45 AM. By 2:45 PM
+M&M (10:50 AM) and SBIN (11:25 AM) had broken theirs too. The pre-market scan
+the next morning over 19 Nifty names (closes through Oct 28) tags LT a 20-day
+breakout and a reclaim of the 20-day average, INFY and TCS bull flags, and
+M&M a reclaim; four charts had no Oct 28 bar on Yahoo and were left out as
+stale.
 
 ## Rules
 
 - Say what was scanned: how many symbols, how many charts came back, how many
-  were usable, and the time of the data.
+  were usable, and the time of the data (IST).
 - Say "matched a rule", never "a buy", "a winner" or "a good trade".
 - Never print a P&L, a return or a profit figure.
 - A hit is stale once the price has moved on. Re-run before acting on it.
@@ -189,7 +195,8 @@ oversold bounce).
 ## What it never does
 
 It never places, sizes or checks an order, never says which stock to buy,
-never calls data real time, and never promises that a setup works.
+never calls data real time, never calls NSE's website API, and never promises
+that a setup works.
 
 ## Safety
 
@@ -199,5 +206,5 @@ never calls data real time, and never promises that a setup works.
   passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
   user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
   (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
-- No options, margin, short selling or leverage unless the config allows it and the user confirms.
-- Broker keys live in environment variables or the Claude Desktop config, never in the chat.
+- No F&O, margin, short selling or leverage unless the config allows it and the user confirms.
+- Kite Connect keys live in environment variables or the Claude Desktop config, never in the chat.

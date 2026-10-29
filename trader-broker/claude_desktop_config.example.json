@@ -1,13 +1,26 @@
 {
   "mcpServers": {
-    "alpaca": {
-      "command": "uvx",
-      "args": ["alpaca-mcp-server"],
+    "kite": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://mcp.kite.trade/mcp"]
+    }
+  },
+  "_comment": [
+    "Above: Zerodha's hosted Kite MCP server (github.com/zerodha/kite-mcp-server). It is read-mostly:",
+    "holdings, positions, orders, margins, quotes. It leaves out order placement. You log in to Kite",
+    "in your browser when it asks; no keys go in this file or in the chat.",
+    "To place orders, self-host the same server with your own Kite Connect app instead: move the",
+    "block below into mcpServers in place of the hosted one. The variable names and how to start the",
+    "server are placeholders: check them against the kite-mcp-server README before you use them.",
+    "Type your key and secret into this file only, never into the chat."
+  ],
+  "_self_hosted_alternative": {
+    "kite": {
+      "command": "/full/path/to/kite-mcp-server",
+      "args": [],
       "env": {
-        "ALPACA_API_KEY": "YOUR_PAPER_API_KEY_TYPED_HERE_NEVER_IN_CHAT",
-        "ALPACA_SECRET_KEY": "YOUR_PAPER_SECRET_KEY_TYPED_HERE_NEVER_IN_CHAT",
-        "ALPACA_PAPER_TRADE": "true",
-        "ALPACA_TOOLSETS": "account,trading,stock-data"
+        "KITE_API_KEY": "YOUR_KITE_CONNECT_API_KEY_TYPED_HERE_NEVER_IN_CHAT",
+        "KITE_API_SECRET": "YOUR_KITE_CONNECT_API_SECRET_TYPED_HERE_NEVER_IN_CHAT"
       }
     }
   }

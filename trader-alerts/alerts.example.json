@@ -1,9 +1,10 @@
 {
   "rules": [
+    {"id": "pre-open", "type": "pre_open"},
     {"id": "opening-bell", "type": "opening_bell"},
-    {"id": "tsla-plan-stop", "symbol": "TSLA", "type": "stop", "price": 358.32, "note": "plan stop: opening-range midpoint", "date": "2026-10-19"},
-    {"id": "tsla-plan-target", "symbol": "TSLA", "type": "target", "price": 370.04, "note": "plan target: 1R (one times the risk)", "date": "2026-10-19"},
-    {"id": "tsla-flat-by", "symbol": "TSLA", "type": "time", "at": "15:55", "label": "flat by close", "before_close": true, "date": "2026-10-19"},
-    {"id": "tsla-move-3", "symbol": "TSLA", "type": "pct_move", "pct": 3}
+    {"id": "reliance-plan-stop", "symbol": "RELIANCE", "type": "stop", "price": 1163.3, "note": "plan stop: opening-range midpoint", "date": "2026-10-29"},
+    {"id": "reliance-plan-target", "symbol": "RELIANCE", "type": "target", "price": 1185.3, "note": "plan target: 1R (one times the risk)", "date": "2026-10-29"},
+    {"id": "reliance-flat-by", "symbol": "RELIANCE", "type": "time", "at": "15:10", "label": "flat by close", "date": "2026-10-29"},
+    {"id": "sbin-move-3", "symbol": "SBIN", "type": "pct_move", "pct": 3}
   ]
 }

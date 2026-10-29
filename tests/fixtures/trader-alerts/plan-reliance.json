@@ -1,0 +1,20 @@
+{
+  "created_by": "trader-exit",
+  "symbol": "RELIANCE",
+  "side": "buy",
+  "date": "2026-10-29",
+  "setup": "orb",
+  "entry": 1174.3,
+  "entry_time": "9:40 AM",
+  "opening_range": {"high": 1170.5, "low": 1156.2, "minutes": 15},
+  "stop": 1163.3,
+  "stop_label": "opening-range midpoint",
+  "target": 1185.3,
+  "target_label": "1R (one times the risk)",
+  "risk_per_share": 11.0,
+  "reward_risk": 1.0,
+  "flat_by": "15:10",
+  "tick_size": 0.1,
+  "charges_rates": {"brokerage_pct": 0.03, "brokerage_max": 20.0, "stt_sell_pct": 0.025, "exchange_pct": 0.00297,
+                    "sebi_pct": 0.0001, "stamp_buy_pct": 0.003, "gst_pct": 18.0}
+}

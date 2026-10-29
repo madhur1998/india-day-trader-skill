@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SYNTHETIC test fixture for trader-insider (not a real filing): the shape of a real NSE IT_*.xml disclosure with three people. -->
+<xbrli:xbrl xmlns:in-capmkt="https://www.nseindia.com/corporates/content/taxonomy/insider_trading_disclosure/core/in-capmkt" xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:xbrli="http://www.xbrl.org/2003/instance">
+<xbrli:context id="ChangeInHoldingOfSecurities001I"><xbrli:entity><xbrli:identifier scheme="http://www.nseindia.com/NSESymbol">SAMPLEIND</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2026-10-28</xbrli:instant></xbrli:period><xbrli:scenario><xbrldi:typedMember dimension="in-capmkt:ChangeInHoldingOfSecuritiesAxis"><in-capmkt:ChangeInHoldingOfSecuritiesDomain>ChangeInHoldingOfSecurities1</in-capmkt:ChangeInHoldingOfSecuritiesDomain></xbrldi:typedMember></xbrli:scenario></xbrli:context>
+<xbrli:context id="ChangeInHoldingOfSecurities002I"><xbrli:entity><xbrli:identifier scheme="http://www.nseindia.com/NSESymbol">SAMPLEIND</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2026-10-28</xbrli:instant></xbrli:period><xbrli:scenario><xbrldi:typedMember dimension="in-capmkt:ChangeInHoldingOfSecuritiesAxis"><in-capmkt:ChangeInHoldingOfSecuritiesDomain>ChangeInHoldingOfSecurities2</in-capmkt:ChangeInHoldingOfSecuritiesDomain></xbrldi:typedMember></xbrli:scenario></xbrli:context>
+<xbrli:context id="ChangeInHoldingOfSecurities003I"><xbrli:entity><xbrli:identifier scheme="http://www.nseindia.com/NSESymbol">SAMPLEIND</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2026-10-28</xbrli:instant></xbrli:period><xbrli:scenario><xbrldi:typedMember dimension="in-capmkt:ChangeInHoldingOfSecuritiesAxis"><in-capmkt:ChangeInHoldingOfSecuritiesDomain>ChangeInHoldingOfSecurities3</in-capmkt:ChangeInHoldingOfSecuritiesDomain></xbrldi:typedMember></xbrli:scenario></xbrli:context>
+<in-capmkt:NSESymbol contextRef="OneI">SAMPLEIND</in-capmkt:NSESymbol>
+<in-capmkt:NameOfTheCompany contextRef="OneI">Sample Industries Limited</in-capmkt:NameOfTheCompany>
+<in-capmkt:ISIN contextRef="OneI">INE000S00000</in-capmkt:ISIN>
+<in-capmkt:RegulationOfInsiderTrading contextRef="OneI">7(2)</in-capmkt:RegulationOfInsiderTrading>
+<in-capmkt:CategoryOfPerson contextRef="ChangeInHoldingOfSecurities001I">Promoter Group</in-capmkt:CategoryOfPerson>
+<in-capmkt:NameOfThePerson contextRef="ChangeInHoldingOfSecurities001I">Asha Sample Family Trust</in-capmkt:NameOfThePerson>
+<in-capmkt:TypeOfInstrument contextRef="ChangeInHoldingOfSecurities001I">Equity Shares</in-capmkt:TypeOfInstrument>
+<in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalNumberOfSecurity contextRef="ChangeInHoldingOfSecurities001I" unitRef="shares" decimals="INF">1000000</in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalNumberOfSecurity>
+<in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalPercentageOfShareholding contextRef="ChangeInHoldingOfSecurities001I" unitRef="pure" decimals="INF">1.2</in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalPercentageOfShareholding>
+<in-capmkt:SecuritiesAcquiredOrDisposedNumberOfSecurity contextRef="ChangeInHoldingOfSecurities001I" unitRef="shares" decimals="INF">250000</in-capmkt:SecuritiesAcquiredOrDisposedNumberOfSecurity>
+<in-capmkt:SecuritiesAcquiredOrDisposedValueOfSecurity contextRef="ChangeInHoldingOfSecurities001I" unitRef="shares" decimals="INF">31250000</in-capmkt:SecuritiesAcquiredOrDisposedValueOfSecurity>
+<in-capmkt:SecuritiesAcquiredOrDisposedTransactionType contextRef="ChangeInHoldingOfSecurities001I">Buy</in-capmkt:SecuritiesAcquiredOrDisposedTransactionType>
+<in-capmkt:SecuritiesHeldPostAcquistionOrDisposalNumberOfSecurity contextRef="ChangeInHoldingOfSecurities001I" unitRef="shares" decimals="INF">1250000</in-capmkt:SecuritiesHeldPostAcquistionOrDisposalNumberOfSecurity>
+<in-capmkt:SecuritiesHeldPostAcquistionOrDisposalPercentageOfShareholding contextRef="ChangeInHoldingOfSecurities001I" unitRef="pure" decimals="INF">1.5</in-capmkt:SecuritiesHeldPostAcquistionOrDisposalPercentageOfShareholding>
+<in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyFromDate contextRef="ChangeInHoldingOfSecurities001I">2026-10-22</in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyFromDate>
+<in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyToDate contextRef="ChangeInHoldingOfSecurities001I">2026-10-23</in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyToDate>
+<in-capmkt:DateOfIntimationToCompany contextRef="ChangeInHoldingOfSecurities001I">2026-10-27</in-capmkt:DateOfIntimationToCompany>
+<in-capmkt:ModeOfAcquisitionOrDisposal contextRef="ChangeInHoldingOfSecurities001I">Market Purchase</in-capmkt:ModeOfAcquisitionOrDisposal>
+<in-capmkt:ExchangeOnWhichTheTradeWasExecuted contextRef="ChangeInHoldingOfSecurities001I">NSE</in-capmkt:ExchangeOnWhichTheTradeWasExecuted>
+<in-capmkt:CategoryOfPerson contextRef="ChangeInHoldingOfSecurities002I">KMP</in-capmkt:CategoryOfPerson>
+<in-capmkt:NameOfThePerson contextRef="ChangeInHoldingOfSecurities002I">Ravi Kumar</in-capmkt:NameOfThePerson>
+<in-capmkt:TypeOfInstrument contextRef="ChangeInHoldingOfSecurities002I">Equity Shares</in-capmkt:TypeOfInstrument>
+<in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalNumberOfSecurity contextRef="ChangeInHoldingOfSecurities002I" unitRef="shares" decimals="INF">90000</in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalNumberOfSecurity>
+<in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalPercentageOfShareholding contextRef="ChangeInHoldingOfSecurities002I" unitRef="pure" decimals="INF">0.11</in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalPercentageOfShareholding>
+<in-capmkt:SecuritiesAcquiredOrDisposedNumberOfSecurity contextRef="ChangeInHoldingOfSecurities002I" unitRef="shares" decimals="INF">40000</in-capmkt:SecuritiesAcquiredOrDisposedNumberOfSecurity>
+<in-capmkt:SecuritiesAcquiredOrDisposedValueOfSecurity contextRef="ChangeInHoldingOfSecurities002I" unitRef="shares" decimals="INF">5100000</in-capmkt:SecuritiesAcquiredOrDisposedValueOfSecurity>
+<in-capmkt:SecuritiesAcquiredOrDisposedTransactionType contextRef="ChangeInHoldingOfSecurities002I">Sell</in-capmkt:SecuritiesAcquiredOrDisposedTransactionType>
+<in-capmkt:SecuritiesHeldPostAcquistionOrDisposalNumberOfSecurity contextRef="ChangeInHoldingOfSecurities002I" unitRef="shares" decimals="INF">50000</in-capmkt:SecuritiesHeldPostAcquistionOrDisposalNumberOfSecurity>
+<in-capmkt:SecuritiesHeldPostAcquistionOrDisposalPercentageOfShareholding contextRef="ChangeInHoldingOfSecurities002I" unitRef="pure" decimals="INF">0.06</in-capmkt:SecuritiesHeldPostAcquistionOrDisposalPercentageOfShareholding>
+<in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyFromDate contextRef="ChangeInHoldingOfSecurities002I">2026-10-16</in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyFromDate>
+<in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyToDate contextRef="ChangeInHoldingOfSecurities002I">2026-10-16</in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyToDate>
+<in-capmkt:DateOfIntimationToCompany contextRef="ChangeInHoldingOfSecurities002I">2026-10-23</in-capmkt:DateOfIntimationToCompany>
+<in-capmkt:ModeOfAcquisitionOrDisposal contextRef="ChangeInHoldingOfSecurities002I">Market Sale</in-capmkt:ModeOfAcquisitionOrDisposal>
+<in-capmkt:ExchangeOnWhichTheTradeWasExecuted contextRef="ChangeInHoldingOfSecurities002I">BSE</in-capmkt:ExchangeOnWhichTheTradeWasExecuted>
+<in-capmkt:CategoryOfPerson contextRef="ChangeInHoldingOfSecurities003I">Immediate relative</in-capmkt:CategoryOfPerson>
+<in-capmkt:NameOfThePerson contextRef="ChangeInHoldingOfSecurities003I">Meera Kumar</in-capmkt:NameOfThePerson>
+<in-capmkt:TypeOfInstrument contextRef="ChangeInHoldingOfSecurities003I">Equity Shares</in-capmkt:TypeOfInstrument>
+<in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalNumberOfSecurity contextRef="ChangeInHoldingOfSecurities003I" unitRef="shares" decimals="INF">0</in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalNumberOfSecurity>
+<in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalPercentageOfShareholding contextRef="ChangeInHoldingOfSecurities003I" unitRef="pure" decimals="INF">0</in-capmkt:SecuritiesHeldPriorToAcquisitionOrDisposalPercentageOfShareholding>
+<in-capmkt:SecuritiesAcquiredOrDisposedNumberOfSecurity contextRef="ChangeInHoldingOfSecurities003I" unitRef="shares" decimals="INF">10000</in-capmkt:SecuritiesAcquiredOrDisposedNumberOfSecurity>
+<in-capmkt:SecuritiesAcquiredOrDisposedTransactionType contextRef="ChangeInHoldingOfSecurities003I">Buy</in-capmkt:SecuritiesAcquiredOrDisposedTransactionType>
+<in-capmkt:SecuritiesHeldPostAcquistionOrDisposalNumberOfSecurity contextRef="ChangeInHoldingOfSecurities003I" unitRef="shares" decimals="INF">10000</in-capmkt:SecuritiesHeldPostAcquistionOrDisposalNumberOfSecurity>
+<in-capmkt:SecuritiesHeldPostAcquistionOrDisposalPercentageOfShareholding contextRef="ChangeInHoldingOfSecurities003I" unitRef="pure" decimals="INF">0.01</in-capmkt:SecuritiesHeldPostAcquistionOrDisposalPercentageOfShareholding>
+<in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyFromDate contextRef="ChangeInHoldingOfSecurities003I">2026-10-26</in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyFromDate>
+<in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyToDate contextRef="ChangeInHoldingOfSecurities003I">2026-10-26</in-capmkt:DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyToDate>
+<in-capmkt:DateOfIntimationToCompany contextRef="ChangeInHoldingOfSecurities003I">2026-10-27</in-capmkt:DateOfIntimationToCompany>
+<in-capmkt:ModeOfAcquisitionOrDisposal contextRef="ChangeInHoldingOfSecurities003I">Gift</in-capmkt:ModeOfAcquisitionOrDisposal>
+<in-capmkt:ExchangeOnWhichTheTradeWasExecuted contextRef="ChangeInHoldingOfSecurities003I">NA</in-capmkt:ExchangeOnWhichTheTradeWasExecuted>
+</xbrli:xbrl>

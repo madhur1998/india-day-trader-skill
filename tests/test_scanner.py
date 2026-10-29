@@ -1,4 +1,5 @@
 import datetime
+import gzip
 import io
 import json
 import os
@@ -6,21 +7,24 @@ import shutil
 import tempfile
 import unittest
 import urllib.error
+import urllib.parse
 from contextlib import redirect_stdout, redirect_stderr
 
-from _load import load, FIX
+from _load import load, FIX, ROOT
 
 scan = load("trader-scanner", "scan")
 
 SDIR = os.path.join(FIX, "trader-scanner")
-WALL = os.path.join(SDIR, "wall5m-2026-10-19.json.gz")       # 234 real 5-min charts, Oct 19 2026
-DAILY = os.path.join(SDIR, "daily-spark-2026-10-19.json")    # 19 real daily charts as one spark answer
-LIVE = os.path.join(SDIR, "spark-3mo-live-2026-10-20.json")  # a real 20-symbol spark answer
-SYMDIR = os.path.join(SDIR, "symdir")                        # trimmed Nasdaq Trader files of Oct 19
-SPARK5 = os.path.join(SDIR, "spark-5m-live-2026-10-20-1001.json")  # real, fetched 10:01:47 AM ET Oct 20
-TSLA5 = os.path.join(SDIR, "TSLA-5m-live-2026-10-20-1001.json")    # real v8, fetched with it
+NSE = os.path.join(FIX, "_nse")                                 # shared real NSE + Yahoo files of Oct 29 2026
+DAILY = os.path.join(SDIR, "spark-3mo-1d-2026-10-29.json")      # real spark: 19 Nifty names + a made-up one
+SPARK5 = os.path.join(SDIR, "spark-5d-5m-2026-10-29.json.gz")   # real spark, 5 days of 5-min closes, 1:41 PM IST
+V8 = {s: os.path.join(NSE, "chart-%s-60d-5m.json.gz" % f)     # real v8 charts with highs and lows
+      for s, f in (("RELIANCE", "RELIANCE"), ("HDFCBANK", "HDFCBANK"), ("INFY", "INFY"), ("SBIN", "SBIN"),
+                   ("M&M", "MM"))}
 DT = datetime.datetime
 D = datetime.date
+NIFTY19 = ["AXISBANK", "BAJAJ-AUTO", "BHARTIARTL", "ETERNAL", "HDFCBANK", "ICICIBANK", "INFY", "ITC", "KOTAKBANK",
+           "LT", "M&M", "MARUTI", "NTPC", "RELIANCE", "SBIN", "SUNPHARMA", "TATASTEEL", "TCS", "TITAN"]
 
 
 def run(argv):
@@ -30,127 +34,166 @@ def run(argv):
     return code, out.getvalue(), err.getvalue()
 
 
-def ts(et_text):
-    """New York wall-clock text -> unix seconds (through the tool's own DST rule)."""
-    utc = scan.eastern_to_utc(DT.strptime(et_text, "%Y-%m-%d %H:%M:%S" if et_text.count(":") == 2
-                                          else "%Y-%m-%d %H:%M"))
+def text(path):
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def ts(ist_text):
+    """India wall-clock text -> unix seconds."""
+    utc = scan.ist_to_utc(DT.strptime(ist_text, "%Y-%m-%d %H:%M:%S" if ist_text.count(":") == 2
+                                      else "%Y-%m-%d %H:%M"))
     return int((utc - DT(1970, 1, 1)).total_seconds())
 
 
-def bars_series(day, closes, highs=None, lows=None, start="09:30", extra=None):
+def bars_series(day, closes, highs=None, lows=None, start="09:15"):
     """A v8-like series of 5-min bars from `start` on `day` (YYYY-MM-DD)."""
     t0 = DT.strptime(day + " " + start, "%Y-%m-%d %H:%M")
     t = [ts((t0 + datetime.timedelta(minutes=5 * i)).strftime("%Y-%m-%d %H:%M")) for i in range(len(closes))]
-    s = {"t": t, "c": list(closes), "h": list(highs or [c + 0.1 if c is not None else None for c in closes]),
-         "l": list(lows or [c - 0.1 if c is not None else None for c in closes]), "o": None,
-         "v": [1000] * len(closes), "meta": {}}
-    for when, c in (extra or []):
-        s["t"].append(ts(when))
-        for k in ("c", "h", "l"):
-            s[k].append(c)
-        s["v"].append(10)
-    return s
+    return {"t": t, "c": list(closes), "h": list(highs or [c + 0.1 if c is not None else None for c in closes]),
+            "l": list(lows or [c - 0.1 if c is not None else None for c in closes]), "o": None,
+            "v": [1000] * len(closes), "meta": {}}
+
+
+def load_v8():
+    data = {}
+    for path in V8.values():
+        d, _ = scan.load_offline(path)
+        data.update(d)
+    return data
 
 
 class Universe(unittest.TestCase):
-    def setUp(self):
-        texts = {}
-        for f in scan.NASDAQ_FILES:
-            with open(os.path.join(SYMDIR, f), encoding="utf-8") as fh:
-                texts[f] = fh.read()
-        self.kept, self.counts, self.created = scan.build_universe(texts)
-        self.rows = {}
-        for f in scan.NASDAQ_FILES:
-            rows, _ = scan.parse_symdir(texts[f])
-            for r in rows:
-                self.rows[(r.get("Symbol") or r.get("ACT Symbol"))] = r
+    @classmethod
+    def setUpClass(cls):
+        cls.eq, cls.sec = text(os.path.join(NSE, "EQUITY_L.csv")), text(os.path.join(NSE, "sec_list.csv"))
+        cls.rows = {r["SYMBOL"]: r for r in scan.parse_equity_list(cls.eq)}
+        cls.bands = scan.parse_bands(cls.sec)
 
-    def why(self, sym):
-        return scan.classify(self.rows[sym])
-
-    def test_the_kept_list(self):
-        self.assertEqual([s for s, _ in self.kept],
-                         ["A", "AACG", "AACI", "AAPL", "AME", "AMX", "ARLP", "BEP", "BF.B", "BRK.B", "IRS",
-                          "KO", "OBAI", "ORGO", "PFBC", "PRT", "TSLA"])
-        self.assertEqual(self.counts["rows"], 36)
-        self.assertEqual(self.created, "2026-10-19 10:01")
-        self.assertEqual(dict(self.kept)["TSLA"], "Tesla, Inc. - Common Stock")
+    def test_eq_only_and_the_5_percent_band_out(self):
+        kept, counts, missing = scan.build_universe(self.eq, self.sec)
+        self.assertEqual(len(kept), 2286)
+        self.assertEqual(counts, {"rows": 2620, "keep": 2286, "band 5 %": 82,
+                                  "series BE (trade-to-trade, no intraday)": 219,
+                                  "series BZ (trade-to-trade, no intraday)": 33})
+        self.assertEqual(missing, [])
+        k = {s: (n, b) for s, n, b in kept}
+        self.assertEqual(k["RELIANCE"], ("Reliance Industries Limited", "No Band"))
+        self.assertEqual(k["M&M"], ("Mahindra & Mahindra Limited", "No Band"))
+        self.assertEqual(k["BAJAJ-AUTO"][1], "No Band")
+        self.assertEqual(k["20MICRONS"][1], "20")
+        self.assertEqual(k["ABDL"][1], "10")
+        self.assertEqual(k["ARHAM"][1], "?")                   # not in sec_list.csv: kept, band unknown
 
     def test_one_case_per_rule(self):
         cases = {
-            "ZAZZT": "test issue", "ZZZTX": "test issue",           # 1. test issues
-            "AAAP": "ETF", "SPY": "ETF",                            # 1. ETFs
-            "ABR$D": "not a plain ticker",                          # 2. $ preferred
-            "AAC.U": "unit / warrant / right suffix",               # 2. .U unit
-            "AAC.W": "unit / warrant / right suffix",               # 2. .W warrant
-            "AACIW": "warrant",                                     # 3. warrants
-            "HAVAR": "unit or right",                               # 3. SPAC rights "Rights that convert..."
-            "ATMP": "note",                                         # 3. an ETN with the ETF flag at N
-            "GJH": "coupon", "EAI": "coupon",                       # 3. a % coupon (bonds too)
-            "CDZIP": "depositary",                                  # 3. depositary shares that carry a preferred
-            "AACIU": "unit", "ARCIU": "unit",                       # 5. "- Units", "- Unit"
-            "AACPR": "right", "GENVR": "right",                     # 5. rights, contingent value rights
-            "BHK": "bond",                                          # 5. a bond fund with no share wording
-            "CHTRP": "preferred",                                   # 5. preferred stock
-            "AAPL": "keep", "AACI": "keep", "AACG": "keep",         # 4. common, ordinary, ADS
-            "PFBC": "keep", "OBAI": "keep",                         # 4. "Preferred Bank", "Our Bond": common stock
-            "AMX": "keep", "IRS": "keep",                           # 4. ADS "the right to receive", Global depositary
-            "ARLP": "keep", "BEP": "keep", "PRT": "keep",           # 4. partnership and trust units
-            "BRK.B": "keep", "BF.B": "keep",                        # 2. one class letter after a dot
-            "AME": "keep", "ORGO": "keep",                          # 6. plain names
+            "AARTISURF": "series BE (trade-to-trade, no intraday)",   # BE: delivery only
+            "AGSTRA": "series BZ (trade-to-trade, no intraday)",      # BZ
+            "21STCENMGM": "band 5 %", "A2ZINFRA": "band 5 %",          # EQ, 5 % circuit
+            "SBIN": "keep", "360ONE": "keep",                          # No Band (F&O)
+            "20MICRONS": "keep", "ABDL": "keep",                       # 20 % and 10 %
         }
         for sym, want in cases.items():
-            self.assertEqual(self.why(sym), want, sym)
+            self.assertEqual(scan.classify(self.rows[sym], self.bands), want, sym)
+        two = {"SYMBOL": "XYZ", "NAME OF COMPANY": "Xyz Ltd", "SERIES": "EQ"}
+        self.assertEqual(scan.classify(two, {"XYZ": "2"}), "band 2 %")
+        self.assertEqual(scan.classify(two, {"XYZ": "2"}, ()), "keep")
+        self.assertEqual(scan.classify(dict(two, SERIES="SM"), {}), "series SM")
 
-    def test_nextshares_rule(self):
-        row = {"Symbol": "ZXYZ", "Security Name": "Some Fund - NextShares", "Test Issue": "N",
-               "ETF": "N", "NextShares": "Y"}
-        self.assertEqual(scan.classify(row), "NextShares")
-
-    def test_not_a_symbol_file(self):
+    def test_band_flag(self):
+        self.assertEqual(scan.parse_bands_flag("2,5"), ("2", "5"))
+        self.assertEqual(scan.parse_bands_flag("5%, 10"), ("5", "10"))
+        self.assertEqual(scan.parse_bands_flag("none"), ())
         with self.assertRaises(scan.ScanError):
-            scan.parse_symdir("<html>maintenance</html>")
+            scan.parse_bands_flag("7")
+        self.assertEqual(len(scan.build_universe(self.eq, self.sec, skip_bands=())[0]), 2368)
+        self.assertEqual(len(scan.build_universe(self.eq, self.sec, skip_bands=("5", "10"))[0]), 2115)
+
+    def test_index_presets(self):
+        kept, counts, missing = scan.build_universe(self.eq, self.sec, text(os.path.join(NSE, "ind_nifty50list.csv")))
+        self.assertEqual(len(kept), 50)
+        self.assertEqual(set(b for _, _, b in kept), {"No Band"})
+        self.assertIn("M&M", [s for s, _, _ in kept])
+        kept, counts, missing = scan.build_universe(self.eq, self.sec,
+                                                    text(os.path.join(NSE, "ind_nifty500list.csv")))
+        self.assertEqual(len(kept), 493)
+        self.assertEqual(counts["band 5 %"], 2)             # two Nifty 500 names sit in a 5 % band
+        # in the index file, not EQ rows of EQUITY_L.csv: three REITs, two names moved to BE, a placeholder
+        self.assertEqual(missing, ["BAGMANE", "BIRET", "DUMMYHEG", "EMBASSY", "HFCL", "STLTECH"])
+        self.assertEqual(len(scan.parse_index(text(os.path.join(NSE, "ind_nifty500list.csv")))), 496)  # EQ rows
+
+    def test_not_nse_files(self):
+        with self.assertRaises(scan.ScanError):
+            scan.parse_equity_list("<html>Access Denied</html>")
+        with self.assertRaises(scan.ScanError):
+            scan.parse_bands(text(os.path.join(NSE, "EQUITY_L.csv")))
+
+    def test_only_nsearchives_and_a_plain_user_agent(self):
+        calls = []
+
+        def fake(url, timeout=20, ua=scan.UA):
+            calls.append((url, ua))
+            return "﻿" + text(os.path.join(NSE, "ind_nifty50list.csv"))
+        old = scan.http_get
+        scan.http_get = fake
+        try:
+            syms = scan.parse_index(scan.nse_text("nifty50"))
+        finally:
+            scan.http_get = old
+        self.assertEqual(len(syms), 50)
+        self.assertEqual(calls, [("https://nsearchives.nseindia.com/content/indices/ind_nifty50list.csv",
+                                  scan.UA)])
+        self.assertNotIn("http", scan.UA)               # nsearchives stalls on a UA with a URL in it
+        src = text(os.path.join(ROOT, "trader-scanner", "scan.py"))
+        self.assertNotIn("www.nseindia.com/api", src)
 
 
 class Time(unittest.TestCase):
-    def test_dst_and_clock(self):
-        self.assertEqual(scan.eastern_offset(DT(2026, 3, 8, 6, 59)), -5)
-        self.assertEqual(scan.eastern_offset(DT(2026, 3, 8, 7, 0)), -4)
-        self.assertEqual(scan.eastern_offset(DT(2026, 11, 1, 5, 59)), -4)
-        self.assertEqual(scan.eastern_offset(DT(2026, 11, 1, 6, 0)), -5)
-        self.assertEqual(scan.ts_to_eastern(1792416600), DT(2026, 10, 19, 9, 30))   # TSLA's first bar
-        self.assertEqual(scan.ts_to_eastern(ts("2026-12-01 09:30")), DT(2026, 12, 1, 9, 30))
-        self.assertEqual(scan.parse_now("2026-10-19 10:15"), DT(2026, 10, 19, 14, 15))
-        self.assertEqual(scan.parse_now("2026-12-01 10:15"), DT(2026, 12, 1, 15, 15))
-        self.assertEqual(scan.parse_now("2026-10-19T14:15:00Z"), DT(2026, 10, 19, 14, 15))
-        self.assertEqual(scan.clock_label(DT(2026, 10, 19, 10, 15)), "10:15 AM")
-        self.assertEqual(scan.clock_label(datetime.time(12, 5)), "12:05 PM")
+    def test_ist_clock(self):
+        self.assertEqual(scan.ts_to_ist(V8_FIRST), DT(2026, 8, 4, 9, 15))        # RELIANCE's first 5-min bar
+        self.assertEqual(scan.parse_now("2026-10-28 10:15"), DT(2026, 10, 28, 4, 45))
+        self.assertEqual(scan.parse_now("2026-10-28 10:15 IST"), DT(2026, 10, 28, 4, 45))
+        self.assertEqual(scan.parse_now("2026-10-28T04:45:00Z"), DT(2026, 10, 28, 4, 45))
+        self.assertEqual(scan.parse_now("2026-12-01 10:15"), DT(2026, 12, 1, 4, 45))   # no daylight saving
+        self.assertEqual(scan.clock_label(DT(2026, 10, 28, 9, 45)), "9:45 AM")
+        self.assertEqual(scan.clock_label(datetime.time(13, 5)), "1:05 PM")
         with self.assertRaises(scan.ScanError):
             scan.parse_now("tomorrow")
         with self.assertRaises(scan.ScanError):
             scan.parse_hhmm("25:00")
 
+    def test_75_bars_a_session(self):
+        self.assertEqual(scan.slots_done(D(2026, 10, 28), DT(2026, 10, 28, 15, 30)), 75)
+        self.assertEqual(scan.slots_done(D(2026, 10, 28), DT(2026, 10, 28, 9, 35)), 4)
+        self.assertEqual(scan.slot(D(2026, 10, 28), 74), DT(2026, 10, 28, 15, 25))
+
+    def test_rupees(self):
+        self.assertEqual(scan.inr(1199.6), "Rs 1,199.60")
+        self.assertEqual(scan.inr(10907662137), "Rs 10,90,76,62,137.00")
+        self.assertEqual(scan.crore(1e8), "Rs 10 crore")
+        self.assertEqual(scan.crore(0), "Rs 0.00")
+
+    def test_calendar_warning_past_2026(self):
+        self.assertIsNone(scan.calendar_warning(D(2026, 12, 31)))
+        self.assertIn("2027", scan.calendar_warning(D(2027, 1, 4)))
+
+
+V8_FIRST = ts("2026-08-04 09:15")
+
 
 class Spark(unittest.TestCase):
     def test_a_real_spark_answer(self):
-        with open(LIVE, encoding="utf-8") as fh:
-            text = fh.read()
-        wanted = {scan.to_yahoo(s): s for s in ["AAPL", "TSLA", "BRK.B", "ZZZZQX"]}
-        data = scan.parse_spark(text, wanted)
-        self.assertEqual(len(data), 19)            # 20 asked; Yahoo silently drops the made-up ZZZZQX
-        self.assertNotIn("ZZZZQX", data)
-        self.assertIn("BRK.B", data)               # BRK-B comes back as ours
-        t = data["TSLA"]
-        self.assertEqual(len(t["t"]), 65)
-        self.assertIsNone(t["h"])                  # spark is closes only
-        self.assertEqual(t["c"][-1], 368.06)
-        self.assertEqual(t["meta"]["regularMarketVolume"], 38651173)
-        self.assertEqual(data["AMC"]["meta"]["regularMarketPrice"], 2.98)
-        closes = scan.daily_closes(t, scan.parse_now("2026-10-20 09:14"))
-        self.assertEqual(closes[-1], (D(2026, 10, 19), 368.06))
-        # the same answer read during Monday's session: Monday's bar is still in progress
-        closes = scan.daily_closes(t, scan.parse_now("2026-10-19 12:00"))
-        self.assertEqual(closes[-1][0], D(2026, 10, 16))
+        data = scan.parse_spark(text(DAILY))
+        self.assertEqual(sorted(data), NIFTY19)        # 20 asked; Yahoo silently drops the made-up ZZZZQX
+        self.assertIn("M&M", data)                     # M&M.NS comes back as ours
+        r = data["RELIANCE"]
+        self.assertIsNone(r["h"])                      # spark is closes only
+        self.assertEqual(r["meta"]["regularMarketVolume"], 13361568)
+        # read before the open on Oct 29: the last complete close is Wed Oct 28
+        self.assertEqual(scan.daily_closes(r, scan.parse_now("2026-10-29 09:00"))[-1], (D(2026, 10, 28), 1158.0))
+        # Thursday's bar is in progress until 3:30 PM IST
+        self.assertEqual(scan.daily_closes(r, scan.parse_now("2026-10-29 15:29"))[-1][0], D(2026, 10, 28))
+        self.assertEqual(scan.daily_closes(r, scan.parse_now("2026-10-29 15:30"))[-1], (D(2026, 10, 29), 1172.8))
 
     def test_spark_errors(self):
         too_many = '{"spark":{"result":null,"error":{"code":"Bad Request",' \
@@ -163,9 +206,9 @@ class Spark(unittest.TestCase):
             scan.parse_spark('{"chart":{}}')
 
     def test_urls(self):
-        self.assertEqual(scan.spark_path(["BRK.B", "tsla"], "3mo", "1d"),
-                         "/v7/finance/spark?symbols=BRK-B,TSLA&range=3mo&interval=1d")
-        self.assertEqual(scan.chart_path("TSLA", "1d", "5m"), "/v8/finance/chart/TSLA?range=1d&interval=5m")
+        self.assertEqual(scan.spark_path(["RELIANCE", "m&m", "BAJAJ-AUTO"], "3mo", "1d"),
+                         "/v7/finance/spark?symbols=RELIANCE.NS,M%26M.NS,BAJAJ-AUTO.NS&range=3mo&interval=1d")
+        self.assertEqual(scan.chart_path("SBIN", "1d", "5m"), "/v8/finance/chart/SBIN.NS?range=1d&interval=5m")
 
 
 class Network(unittest.TestCase):
@@ -175,8 +218,7 @@ class Network(unittest.TestCase):
         self.calls, self.sleeps = [], []
         self._get, self._sleep = scan.http_get, scan.SLEEP
         scan.SLEEP = self.sleeps.append
-        with open(LIVE, encoding="utf-8") as fh:
-            self.body = fh.read()
+        self.body = text(DAILY)
 
     def tearDown(self):
         scan.http_get, scan.SLEEP = self._get, self._sleep
@@ -184,7 +226,7 @@ class Network(unittest.TestCase):
     def answers(self, codes):
         codes = list(codes)
 
-        def fake(url, timeout=20):
+        def fake(url, timeout=20, ua=scan.UA):
             self.calls.append(url.split("/v")[0])
             code = codes.pop(0) if codes else 200
             if code != 200:
@@ -194,105 +236,95 @@ class Network(unittest.TestCase):
 
     def test_429_falls_back_then_waits_once(self):
         self.answers([429, 429, 200])
-        text = scan.yahoo_get("/v7/finance/spark?symbols=TSLA&range=3mo&interval=1d")
-        self.assertEqual(text, self.body)
+        self.assertEqual(scan.yahoo_get("/v7/finance/spark?symbols=SBIN.NS&range=3mo&interval=1d"), self.body)
         self.assertEqual(self.calls, ["https://query2.finance.yahoo.com", "https://query1.finance.yahoo.com",
                                       "https://query2.finance.yahoo.com"])
         self.assertEqual(self.sleeps, [scan.BACKOFF])
 
     def test_5xx_goes_to_query1_without_waiting(self):
         self.answers([503, 200])
-        scan.yahoo_get("/v8/finance/chart/TSLA?range=1d&interval=5m")
+        scan.yahoo_get("/v8/finance/chart/SBIN.NS?range=1d&interval=5m")
         self.assertEqual(len(self.calls), 2)
         self.assertEqual(self.sleeps, [])
 
     def test_429_for_good_is_reported_as_partial(self):
         self.answers([200] + [429] * 10)
-        syms = ["AAPL", "TSLA", "NVDA", "BRK.B", "AMC", "ZZZZQX", "MSFT", "AMZN", "META", "GOOGL", "PLTR", "AMD",
-                "INTC", "F", "BAC", "KO", "PLUG", "SOFI", "RIVN", "LCID"] + ["X%02d" % i for i in range(20)]
+        syms = NIFTY19 + ["ZZZZQX"] + ["X%02d" % i for i in range(20)]
         data, failed = scan.fetch_spark(syms, "3mo", "1d", 0.3)
         self.assertEqual(len(data), 19)
         self.assertEqual(failed["ZZZZQX"], "no data from Yahoo")
         self.assertEqual(len(failed), 21)
         self.assertIn("HTTP 429", failed["X00"])
         self.assertEqual(self.sleeps, [0.3, scan.BACKOFF])  # a pause between batches, one backoff
-        hits, counts, _ = scan.scan_daily(data, syms, scan.parse_now("2026-10-20 09:14"), 5, 1000000)
-        self.assertEqual(counts["requested"], 40)
-        self.assertEqual(counts["fetched"], 19)
+        hits, counts, _ = scan.scan_daily(data, syms, scan.parse_now("2026-10-29 09:00"), 50, 1e8)
+        self.assertEqual((counts["requested"], counts["fetched"]), (40, 19))
 
     def test_a_404_is_final(self):
         self.answers([404])
         with self.assertRaises(scan.ScanError):
-            scan.yahoo_get("/v8/finance/chart/NOPE?range=1d&interval=5m")
+            scan.yahoo_get("/v8/finance/chart/NOPE.NS?range=1d&interval=5m")
         self.assertEqual(len(self.calls), 1)
 
 
 class Daily(unittest.TestCase):
-    # Hand-checked from the closes (see the numbers in the comments): through Fri Oct 16 2026.
+    # Hand-checked from the closes, through Wed Oct 28 2026 (read before Thursday's open).
     EXPECT = {
-        "BLK": ["breakout_20d"],    # 1134.38 > 1120.78, the best close of the 20 before
-        "CI": ["breakout_20d"],     # 302.30 > 298.81
-        "XOM": ["breakout_20d"],    # 178.98 > 177.01
-        "HD": ["breakout_20d"],     # 309.63 > 308.24
-        "KO": ["breakout_20d"],     # 93.90 > 92.00 (a closing high; its intraday high was not taken out)
-        "CCL": ["bull_flag"],       # up 18.4 % over the 10 sessions, last 5 closes in a 3.2 % range
-        "RCL": ["bull_flag"],       # up 16.3 %, 2.6 % range
-        "F": ["reclaim_ma20"],      # 12.31 under 12.41, then 12.43 over 12.37
-        "JPM": ["reclaim_ma20"],    # 335.53 under 336.15, then 339.72 over 335.65
-        "GE": ["reclaim_ma20"],     # 312.00 under 312.90, then 313.83 over 312.88
-        "BAC": ["oversold"],        # RSI 24.0
-        "PLUG": ["oversold"],       # RSI 21.0
-        "MS": ["oversold"],         # RSI 25.5
-        "RIVN": ["oversold"],       # RSI 22.7
-        "PNC": ["oversold_bounce"],  # RSI 27.1 on Thursday, closed up Friday (214.94 -> 217.39), RSI 34.0
+        "INFY": ["bull_flag"],                     # up 15.2 % over the 10 sessions, last 5 closes in a 3.8 % range
+        "TCS": ["bull_flag"],                      # up 20.4 %, 3.0 % range
+        "LT": ["breakout_20d", "reclaim_ma20"],    # 3801.30 > 3770.00; 3665.10 under 3682.53, then over 3684.28
+        "M&M": ["reclaim_ma20"],                   # 2858.40 under 2864.97, then 2869.90 over 2858.71
     }
-    # The reel's refs/scan.py tags for the same charts (it used highs and lows): all reproduced.
-    REEL = {"BLK": "breakout_20d", "CI": "breakout_20d", "XOM": "breakout_20d", "HD": "breakout_20d",
-            "CCL": "bull_flag", "F": "reclaim_ma20", "JPM": "reclaim_ma20", "GE": "reclaim_ma20",
-            "BAC": "oversold", "PLUG": "oversold", "MS": "oversold", "RIVN": "oversold"}
 
     def setUp(self):
         self.data, self.errors = scan.load_offline(DAILY)
         self.syms = sorted(self.data)
 
     def test_setups_before_the_open(self):
-        self.assertEqual(len(self.syms), 19)
-        hits, counts, last = scan.scan_daily(self.data, self.syms, scan.parse_now("2026-10-19 09:00"), 0, 0)
+        hits, counts, last = scan.scan_daily(self.data, self.syms, scan.parse_now("2026-10-29 09:00"), 50, 1e8)
         self.assertEqual({h["symbol"]: h["setups"] for h in hits}, self.EXPECT)
-        self.assertEqual(last, D(2026, 10, 16))
-        self.assertEqual(counts, {"requested": 19, "fetched": 19, "illiquid": 0, "short": 0, "scanned": 19,
-                                  "hits": 15})
-        for sym, tag in self.REEL.items():
-            self.assertIn(tag, self.EXPECT[sym], sym)
-        blk = [h for h in hits if h["symbol"] == "BLK"][0]
-        self.assertEqual((blk["price"], blk["rsi"], blk["close_date"]), (1134.38, 63.7, "2026-10-16"))
+        self.assertEqual(last, D(2026, 10, 28))
+        self.assertEqual(counts, {"requested": 19, "fetched": 19, "illiquid": 0, "short": 0, "stale": 4,
+                                  "scanned": 15, "hits": 4})
+        self.assertEqual([h["symbol"] for h in hits], ["INFY", "TCS", "LT", "M&M"])   # most rupees traded first
+        infy = hits[0]
+        self.assertEqual((infy["price"], infy["rsi"], infy["close_date"], infy["volume"]),
+                         (1123.15, 55.3, "2026-10-28", 9577366))
+
+    def test_a_chart_with_no_bar_for_the_last_session_is_stale(self):
+        # Yahoo's daily spark skipped Oct 28 for these four (MARUTI's last close is Oct 27)
+        bars = scan.daily_closes(self.data["MARUTI"], scan.parse_now("2026-10-29 09:00"))
+        self.assertEqual(bars[-1], (D(2026, 10, 27), 11450.0))
+        hits, counts, _ = scan.scan_daily(self.data, ["MARUTI", "BAJAJ-AUTO", "KOTAKBANK", "TITAN", "INFY"],
+                                          scan.parse_now("2026-10-29 09:00"), 50, 1e8)
+        self.assertEqual((counts["stale"], counts["scanned"]), (4, 1))
 
     def test_the_in_progress_bar_is_dropped(self):
-        before = scan.scan_daily(self.data, self.syms, scan.parse_now("2026-10-19 09:00"), 0, 0)
-        during = scan.scan_daily(self.data, self.syms, scan.parse_now("2026-10-19 10:50"), 0, 0)
+        before = scan.scan_daily(self.data, self.syms, scan.parse_now("2026-10-29 09:00"), 50, 1e8)
+        during = scan.scan_daily(self.data, self.syms, scan.parse_now("2026-10-29 13:41"), 50, 1e8)
         self.assertEqual(before, during)
-        bars = scan.daily_closes(self.data["TSLA"], scan.parse_now("2026-10-19 15:59"))
-        self.assertEqual(bars[-1], (D(2026, 10, 16), 354.7200012207031))
-        bars = scan.daily_closes(self.data["TSLA"], scan.parse_now("2026-10-19 16:00"))
-        self.assertEqual(bars[-1], (D(2026, 10, 19), 365.7950134277344))
 
-    def test_half_day_bar_completes_at_one(self):
-        s = {"t": [ts("2026-11-25 09:30"), ts("2026-11-27 09:30")], "c": [10.0, 11.0], "meta": {}}
-        self.assertEqual(len(scan.daily_closes(s, scan.parse_now("2026-11-27 12:59"))), 1)
-        self.assertEqual(len(scan.daily_closes(s, scan.parse_now("2026-11-27 13:00"))), 2)
+    def test_holiday_and_weekend_bars(self):
+        s = {"t": [ts("2026-10-19 09:15"), ts("2026-10-21 09:15")], "c": [10.0, 11.0], "meta": {}}
+        # Tue Oct 20 was Dussehra: no bar, and Wednesday's bar completes at 3:30 PM
+        self.assertEqual(scan.daily_closes(s, scan.parse_now("2026-10-20 12:00")), [(D(2026, 10, 19), 10.0)])
+        self.assertEqual(len(scan.daily_closes(s, scan.parse_now("2026-10-21 15:29"))), 1)
+        self.assertEqual(len(scan.daily_closes(s, scan.parse_now("2026-10-21 15:30"))), 2)
+        # on a Saturday the week's last bar is complete
+        self.assertEqual(len(scan.daily_closes(s, scan.parse_now("2026-10-24 10:00"))), 2)
 
-    def test_liquidity_filter(self):
-        # meta is Yahoo's as of 10:50 AM Monday, so the volume is the day's so far
-        hits, counts, _ = scan.scan_daily(self.data, self.syms, scan.parse_now("2026-10-19 10:50"), 5, 1000000)
-        self.assertEqual(sorted(h["symbol"] for h in hits), ["BAC", "CCL", "F", "JPM", "KO", "RIVN", "XOM"])
-        self.assertEqual(counts["illiquid"], 8)     # PLUG under $5; BLK, CI, HD, RCL, GE, MS, PNC under 1M so far
-        self.assertEqual(counts["scanned"], 11)
+    def test_rupee_floors(self):
+        hits, counts, _ = scan.scan_daily(self.data, self.syms, scan.parse_now("2026-10-29 09:00"), 1000, 500 * 1e7)
+        self.assertEqual([h["symbol"] for h in hits], ["INFY", "TCS", "LT"])
+        self.assertEqual(counts["illiquid"], 13)        # under Rs 1,000 or under Rs 500 crore traded (M&M: 331)
+        hits, counts, _ = scan.scan_daily(self.data, self.syms, scan.parse_now("2026-10-29 09:00"), 50, 0,
+                                          min_volume=10000000)
+        self.assertEqual(counts["scanned"], 4)          # 5 over 1 crore shares; KOTAKBANK is stale
 
     def test_short_and_empty_charts(self):
-        s = {"t": [ts("2026-10-%02d 09:30" % d) for d in range(1, 11)], "c": [10.0] * 10,
-             "meta": {"regularMarketPrice": 10, "regularMarketVolume": 5000000}}
+        s = {"t": [ts("2026-10-%02d 09:15" % d) for d in range(5, 16)], "c": [100.0] * 11,
+             "meta": {"regularMarketPrice": 100, "regularMarketVolume": 5000000}}
         hits, counts, last = scan.scan_daily({"X": s, "E": {"t": [], "c": [], "meta": {}}}, ["X", "E", "GONE"],
-                                             scan.parse_now("2026-10-20 09:00"), 5, 1000000)
+                                             scan.parse_now("2026-10-29 09:00"), 50, 1e8)
         self.assertEqual(hits, [])
         self.assertEqual((counts["fetched"], counts["short"], counts["illiquid"], counts["scanned"]), (2, 1, 1, 0))
         self.assertIsNone(last)
@@ -308,172 +340,156 @@ class Daily(unittest.TestCase):
 class Orb(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.data, cls.errors = scan.load_offline(WALL)
-        cls.syms = sorted(set(cls.data) | set(cls.errors))
+        cls.data = load_v8()
+        cls.syms = sorted(cls.data)
 
-    def scan_at(self, now, min_price=0, syms=None, or_minutes=15):
-        day, cutoff = scan.orb_window(scan.parse_now(now), None, or_minutes, datetime.time(15, 30))
+    def scan_at(self, now, syms=None, min_price=50, or_minutes=15):
+        day, cutoff = scan.orb_window(scan.parse_now(now), None, or_minutes, datetime.time(14, 45))
         return scan.scan_orb(self.data, syms or self.syms, day, cutoff, or_minutes, min_price, 0)
 
-    def test_the_reel_scan_at_1015(self):
-        hits, counts, failed = self.scan_at("2026-10-19 10:15")
-        self.assertEqual(len(self.syms), 234)
-        self.assertEqual(counts["scanned"], 231)          # usable charts
-        self.assertEqual(len(hits), 42)
-        self.assertEqual(self.errors, {"SQ": "no data for SQ: No data found, symbol may be delisted"})
-        self.assertEqual(counts["unusable"], 2)            # WBD (no bars), PARA (missing bars)
-        tsla = [h for h in hits if h["symbol"] == "TSLA"][0]
-        self.assertEqual(tsla, {"symbol": "TSLA", "setups": ["orb"], "price": 364.18, "at": "10:15 AM",
-                                "bar_start": "10:10", "bar_index": 8, "or_high": 362.18, "or_low": 354.47,
-                                "pct_over": 0.55})
-        self.assertEqual(hits[0]["symbol"], "AMC")         # sorted by time, then symbol
-        self.assertEqual([h["at"] for h in hits], sorted([h["at"] for h in hits], key=lambda x: scan.parse_hhmm(
-            x[:-3]).hour % 12 * 60 + int(x[-5:-3])))
-        self.assertEqual(sum(1 for h in hits if h["at"] == "10:15 AM"), 11)
-        lly = [h for h in hits if h["symbol"] == "LLY"][0]
-        self.assertEqual((lly["price"], lly["or_high"], lly["pct_over"]), (1255.0, 1254.99, 0.0))
+    def test_wednesday_at_1015(self):
+        hits, counts, failed = self.scan_at("2026-10-28 10:15")
+        self.assertEqual(self.syms, ["HDFCBANK", "INFY", "M&M", "RELIANCE", "SBIN"])
+        self.assertEqual((counts["scanned"], counts["unusable"], len(hits)), (5, 0, 2))
+        # RELIANCE: range 9:15 to 9:30, high 1194.80 (the 9:15 bar), low 1187.00; the 9:40 bar closed 1199.60
+        self.assertEqual(hits[1], {"symbol": "RELIANCE", "setups": ["orb"], "price": 1199.6, "at": "9:45 AM",
+                                   "bar_start": "09:40", "bar_index": 5, "or_high": 1194.8, "or_low": 1187.0,
+                                   "pct_over": 0.4})
+        self.assertEqual((hits[0]["symbol"], hits[0]["at"], hits[0]["or_high"]), ("HDFCBANK", "9:45 AM", 676.8))
 
-    def test_price_floor(self):
-        hits, counts, _ = self.scan_at("2026-10-19 10:15", min_price=5)
-        self.assertEqual(len(hits), 41)                    # AMC at $2.97 drops out
-        self.assertEqual(counts["illiquid"], 9)
-        self.assertNotIn("AMC", [h["symbol"] for h in hits])
+    def test_later_in_the_day(self):
+        hits, _, _ = self.scan_at("2026-10-28 14:45")
+        self.assertEqual([(h["symbol"], h["at"]) for h in hits],
+                         [("HDFCBANK", "9:45 AM"), ("RELIANCE", "9:45 AM"), ("M&M", "10:50 AM"),
+                          ("SBIN", "11:25 AM")])
 
-    def test_in_progress_bar_and_no_breakout_yet(self):
-        hits, _, _ = self.scan_at("2026-10-19 10:14", syms=["TSLA"])
-        self.assertEqual(hits, [])                         # the 10:10 bar is not done until 10:15
-        hits, _, _ = self.scan_at("2026-10-19 10:15", syms=["TSLA"])
-        self.assertEqual(hits[0]["at"], "10:15 AM")
+    def test_the_9_15_grid_and_the_first_bar_after_the_range(self):
+        day = D(2026, 10, 28)
+        bars = scan.session_bars(self.data["RELIANCE"], day, DT(2026, 10, 28, 9, 35))
+        self.assertEqual([b["start"].strftime("%H:%M") for b in bars], ["09:15", "09:20", "09:25", "09:30"])
+        hits, _, _ = self.scan_at("2026-10-28 09:44", syms=["RELIANCE"])
+        self.assertEqual(hits, [])                         # the 9:40 bar is not done until 9:45
+        hits, _, _ = self.scan_at("2026-10-28 09:45", syms=["RELIANCE"])
+        self.assertEqual(hits[0]["at"], "9:45 AM")
 
-    def test_the_live_tick_is_dropped(self):
-        s = self.data["TSLA"]
-        self.assertEqual(scan.ts_to_eastern(s["t"][-1]), DT(2026, 10, 19, 10, 58, 7))   # off the grid
-        bars = scan.session_bars(s, D(2026, 10, 19), DT(2026, 10, 19, 10, 59))
-        self.assertEqual(len(bars), 17)                    # 9:30 to 10:50; 10:55 in progress, the tick dropped
-        self.assertTrue(scan.usable(bars, D(2026, 10, 19), DT(2026, 10, 19, 10, 59), 3))
-        hits, _, _ = self.scan_at("2026-10-19 11:00", syms=["TSLA"])
-        self.assertEqual(hits[0]["price"], 364.18)         # still the first close above the range
+    def test_a_full_session_has_75_bars_and_the_feed_drops_15_20(self):
+        day = D(2026, 10, 28)
+        bars = scan.session_bars(self.data["RELIANCE"], day, DT(2026, 10, 28, 15, 30))
+        self.assertEqual(len(bars), 74)                    # 9:15 to 15:25, Yahoo left 15:20 empty
+        self.assertNotIn("15:20", [b["start"].strftime("%H:%M") for b in bars])
+        self.assertEqual(scan.gaps(bars, day, DT(2026, 10, 28, 15, 30)), 1)
+        self.assertTrue(scan.usable(bars, day, DT(2026, 10, 28, 15, 30), 3))
+
+    def test_the_live_tick_and_the_in_progress_bar_are_dropped(self):
+        s = self.data["RELIANCE"]
+        self.assertEqual(scan.ts_to_ist(s["t"][-1]), DT(2026, 10, 29, 13, 35, 17))   # off the grid
+        bars = scan.session_bars(s, D(2026, 10, 29), DT(2026, 10, 29, 13, 37))
+        self.assertEqual(bars[-1]["start"], DT(2026, 10, 29, 13, 30))   # 13:35 in progress, the tick dropped
+        hits, _, _ = self.scan_at("2026-10-29 13:37", syms=["RELIANCE"])
+        self.assertEqual((hits[0]["at"], hits[0]["price"]), ("9:40 AM", 1174.3))
 
     def test_stage_one_is_a_necessary_condition(self):
-        day, cut = D(2026, 10, 19), DT(2026, 10, 19, 10, 15)
-        for sym, s in self.data.items():
-            bars = scan.session_bars(s, day, cut)
-            if scan.usable(bars, day, cut, 3) and scan.orb_hit(bars, 3):
-                self.assertTrue(scan.orb_candidate(bars, 3), sym)
+        for day in (D(2026, 10, 26), D(2026, 10, 27), D(2026, 10, 28), D(2026, 10, 29)):
+            cut = DT.combine(day, datetime.time(13, 30))
+            for sym, s in self.data.items():
+                bars = scan.session_bars(s, day, cut)
+                if scan.usable(bars, day, cut, 3) and scan.orb_hit(bars, 3):
+                    self.assertTrue(scan.orb_candidate(bars, 3, day, cut), (sym, day))
+
+    def test_missing_bars(self):
+        day, cut = D(2026, 10, 28), DT(2026, 10, 28, 10, 15)
+        # a range bar missing: unusable
+        s = bars_series("2026-10-28", [100, None, 100.1, 100.2, 100.3, 100.4, 100.5, 100.6, 100.7, 100.8, 100.9, 101])
+        self.assertFalse(scan.usable(scan.session_bars(s, day, cut), day, cut, 3))
+        # one bar after the range missing: usable, a stage-1 candidate, and the hit says so
+        closes = [100, 100.2, 100.1, 100.0, None, 100.6, 100.4, 100.3, 100.2, 100.1, 100.0, 99.9]
+        s = bars_series("2026-10-28", closes)
+        bars = scan.session_bars(s, day, cut)
+        self.assertTrue(scan.usable(bars, day, cut, 3))
+        self.assertTrue(scan.orb_candidate(bars, 3, day, cut))
+        hit = scan.orb_hit(bars, 3)
+        self.assertEqual((hit["at"], hit["bar_index"], hit["missing_before"]), ("9:45 AM", 5, 1))
+        # four missing after the range: a thin stock or a halt
+        s = bars_series("2026-10-28", [100, 100.2, 100.1, None, None, None, None, 100.6, 100.4, 100.3, 100, 99])
+        self.assertFalse(scan.usable(scan.session_bars(s, day, cut), day, cut, 3))
 
     def test_confirm_uses_the_v8_highs(self):
-        spark_like = {k: dict(v, h=None, l=None) for k, v in self.data.items()}  # closes only, like spark
+        spark, _ = scan.load_offline(SPARK5)
+        self.assertEqual(sorted(spark), NIFTY19)
+        asked = []
+
+        def confirm(sym):
+            asked.append(sym)
+            if sym not in self.data:
+                raise scan.ScanError("no data for %s" % sym)
+            return self.data[sym]
+        day, cut = D(2026, 10, 28), DT(2026, 10, 28, 10, 15)
+        hits, counts, failed = scan.scan_orb(spark, NIFTY19, day, cut, 15, 50, 0, confirm)
+        self.assertEqual((counts["scanned"], counts["candidates"], counts["confirmed"]), (19, 14, 5))
+        self.assertEqual(len(asked), 14)                   # stage 1 skipped 5 charts
+        self.assertIn("NTPC", asked)                       # no 10:05 bar in its spark: sent on to stage 2
+        self.assertEqual([h["symbol"] for h in hits], ["HDFCBANK", "RELIANCE"])
+        self.assertEqual(len(failed), 9)
+
+    def test_stage_two_cap_takes_the_most_traded(self):
+        spark_like = {k: dict(v, h=None, l=None) for k, v in self.data.items()}
         asked = []
 
         def confirm(sym):
             asked.append(sym)
             return self.data[sym]
-        hits, counts, failed = scan.scan_orb(spark_like, self.syms, D(2026, 10, 19), DT(2026, 10, 19, 10, 15), 15,
-                                             0, 0, confirm)
-        self.assertEqual(len(hits), 42)
-        self.assertEqual(counts["candidates"], len(asked))
-        self.assertLess(len(asked), 231)                   # stage 1 skipped most charts
+        day, cut = D(2026, 10, 28), DT(2026, 10, 28, 11, 0)
+        hits, counts, _ = scan.scan_orb(spark_like, self.syms, day, cut, 15, 0, 0, confirm, max_confirm=2)
+        self.assertEqual((counts["confirmed"], counts["unconfirmed"]), (2, counts["candidates"] - 2))
+        hits_all, _, _ = scan.scan_orb(spark_like, self.syms, day, cut, 15, 0, 0, confirm, max_confirm=0)
+        self.assertEqual(len(hits_all), 3)
+        for h in hits:
+            self.assertIn(h, hits_all)
 
-        def broken(sym):
-            raise scan.ScanError("Yahoo answered HTTP 429 for /v8/finance/chart/%s" % sym)
-        hits, counts, failed = scan.scan_orb(spark_like, ["TSLA", "KO"], D(2026, 10, 19),
-                                             DT(2026, 10, 19, 10, 15), 15, 0, 0, broken)
-        self.assertEqual(hits, [])
-        self.assertIn("429", failed["TSLA"])
+    def test_price_and_turnover_floors(self):
+        hits, counts, _ = self.scan_at("2026-10-28 10:15", min_price=1000)
+        self.assertEqual(counts["illiquid"], 2)            # HDFCBANK (676) and SBIN (952) under Rs 1,000
+        day, cut = D(2026, 10, 28), DT(2026, 10, 28, 10, 15)
+        hits, counts, _ = scan.scan_orb(self.data, self.syms, day, cut, 15, 0, 1e13)
+        self.assertEqual((counts["illiquid"], hits), (5, []))
 
-    def test_a_missing_bar_makes_a_chart_unusable(self):
-        s = bars_series("2026-10-20", [10, 10.2, 10.1, None, 10.5, 10.6, 10.7, 10.8, 10.9])
-        bars = scan.session_bars(s, D(2026, 10, 20), DT(2026, 10, 20, 10, 15))
-        self.assertFalse(scan.usable(bars, D(2026, 10, 20), DT(2026, 10, 20, 10, 15), 3))
-
-    def test_winter_time_half_day_and_a_30_minute_range(self):
-        # Fri Nov 27 2026: standard time (UTC-5) and a 1:00 PM close
-        closes = [100, 101, 100.5, 100.8, 101.2, 100.9, 101.5] + [101.0] * 40
-        s = bars_series("2026-11-27", closes, highs=[c + 0.2 for c in closes])
-        hits, counts, _ = scan.scan_orb({"X": s}, ["X"], D(2026, 11, 27), DT(2026, 11, 27, 12, 0), 30, 0, 0)
-        self.assertEqual(counts["scanned"], 1)
-        self.assertEqual(hits[0]["at"], "10:05 AM")         # range 9:30 to 10:00 (high 101.4), 10:00 bar 101.5
-        self.assertEqual(hits[0]["or_high"], 101.4)
-        bars = scan.session_bars(s, D(2026, 11, 27), DT(2026, 11, 27, 12, 59))
-        self.assertEqual(scan.ts_to_eastern(s["t"][0]), DT(2026, 11, 27, 9, 30))
-        self.assertEqual(len(bars), 41)                    # 9:30 to 12:50 done at 12:59; bars after 1:00 dropped
-        with self.assertRaises(scan.ScanError) as cm:
-            scan.orb_window(scan.parse_now("2026-11-27 13:10"), None, 15, datetime.time(15, 30))
-        self.assertIn("closed at 1:00 PM", str(cm.exception))
+    def test_muhurat_session_uses_its_own_grid(self):
+        old = scan.NSE_MUHURAT["2026-11-08"]
+        scan.NSE_MUHURAT["2026-11-08"] = ("18:00", "19:00")
+        try:
+            day = D(2026, 11, 8)
+            self.assertEqual(scan.slots_done(day, DT(2026, 11, 8, 19, 30)), 12)
+            s = bars_series("2026-11-08", [100, 100.5, 100.2, 100.4, 100.9, 101], start="18:00")
+            d, cut = scan.orb_window(scan.parse_now("2026-11-08 18:30"), None, 15, None)
+            hits, counts, _ = scan.scan_orb({"X": s}, ["X"], d, cut, 15, 0, 0)
+            self.assertEqual((hits[0]["at"], hits[0]["or_high"]), ("6:25 PM", 100.6))
+        finally:
+            scan.NSE_MUHURAT["2026-11-08"] = old
 
     def test_window_messages(self):
-        until = datetime.time(15, 30)
+        until = datetime.time(14, 45)
 
         def msg(now, at=None, until=until):
             with self.assertRaises(scan.ScanError) as cm:
                 scan.orb_window(scan.parse_now(now), at, 15, until)
             return str(cm.exception)
-        self.assertIn("weekend", msg("2026-10-17 10:15"))
-        self.assertIn("Thanksgiving", msg("2026-11-26 10:15"))
-        self.assertIn("Run orb again after 9:50 AM", msg("2026-10-19 09:40"))
-        self.assertIn("Run orb again after 9:50 AM", msg("2026-10-19 09:47"))
-        self.assertIn("expired", msg("2026-10-19 15:45"))
-        self.assertIn("expired", msg("2026-10-19 11:30", until=datetime.time(11, 0)))
-        self.assertIn("closed at 4:00 PM", msg("2026-10-19 16:30"))
-        self.assertIn("later than now", msg("2026-10-19 10:00", at=datetime.time(10, 15)))
-        self.assertIn("after the 4:00 PM close", msg("2026-10-19 17:00", at=datetime.time(16, 30)))
-        self.assertEqual(scan.orb_window(scan.parse_now("2026-10-19 16:30"), datetime.time(10, 15), 15, until),
-                         (D(2026, 10, 19), DT(2026, 10, 19, 10, 15)))
-        self.assertEqual(scan.orb_window(scan.parse_now("2026-10-19 09:50"), None, 15, until)[1],
-                         DT(2026, 10, 19, 9, 50))
+        self.assertIn("weekend", msg("2026-10-31 10:15"))
+        self.assertIn("Dussehra", msg("2026-10-20 10:15"))
+        self.assertIn("Diwali", msg("2026-11-10 10:15"))
+        self.assertIn("Muhurat", msg("2026-11-08 18:30"))
+        self.assertIn("runs 9:15 AM to 9:30 AM", msg("2026-10-28 09:20"))
+        self.assertIn("Run orb again after 9:35 AM", msg("2026-10-28 09:34"))
+        self.assertIn("expired", msg("2026-10-28 15:00"))
+        self.assertIn("expired", msg("2026-10-28 11:30", until=datetime.time(11, 0)))
+        self.assertIn("closed at 3:30 PM IST", msg("2026-10-28 15:45", until=None))
+        self.assertIn("later than now", msg("2026-10-28 10:00", at=datetime.time(10, 15)))
+        self.assertIn("after the 3:30 PM close", msg("2026-10-28 17:00", at=datetime.time(15, 45)))
+        self.assertEqual(scan.orb_window(scan.parse_now("2026-10-28 16:30"), datetime.time(10, 15), 15, until),
+                         (D(2026, 10, 28), DT(2026, 10, 28, 10, 15)))
+        self.assertEqual(scan.orb_window(scan.parse_now("2026-10-28 09:35"), None, 15, until)[1],
+                         DT(2026, 10, 28, 9, 35))
         with self.assertRaises(scan.ScanError):
-            scan.orb_window(scan.parse_now("2026-10-19 10:15"), None, 7, until)
-
-
-class LiveFiveMinute(unittest.TestCase):
-    """A real spark 5-minute answer and TSLA's v8 chart, fetched at 10:01:47 AM ET on Tue Oct 20 2026."""
-
-    def setUp(self):
-        with open(SPARK5, encoding="utf-8") as fh:
-            self.spark = scan.parse_spark(fh.read())
-        with open(TSLA5, encoding="utf-8") as fh:
-            self.v8 = scan.parse_chart(fh.read(), "TSLA")
-        self.now = scan.parse_now("2026-10-20T14:01:48Z")
-
-    def test_in_progress_bar_and_live_tick_are_dropped(self):
-        self.assertEqual(len(self.spark), 20)
-        self.assertIn("BRK.B", self.spark)
-        t = self.spark["TSLA"]
-        self.assertEqual(len(t["t"]), 8)                   # 9:30 ... 10:00 (in progress) + the 10:01:47 tick
-        self.assertEqual(scan.ts_to_eastern(t["t"][-1]), DT(2026, 10, 20, 10, 1, 47))
-        day, cut = scan.orb_window(self.now, None, 15, datetime.time(15, 30))
-        self.assertEqual(cut, DT(2026, 10, 20, 10, 1))
-        bars = scan.session_bars(t, day, cut)
-        self.assertEqual([b["start"].strftime("%H:%M") for b in bars], ["09:30", "09:35", "09:40", "09:45",
-                                                                         "09:50", "09:55"])
-        self.assertEqual(len(scan.session_bars(self.v8, day, cut)), 6)
-
-    def test_tsla_broke_its_range_at_ten(self):
-        day, cut = scan.orb_window(self.now, None, 15, datetime.time(15, 30))
-        hits, counts, failed = scan.scan_orb(self.spark, ["TSLA", "AMC"], day, cut, 15, 5, 0, lambda s: self.v8)
-        # range 9:30 to 9:45: high 370.49 (the 9:30 bar), low 363.64; the 9:55 bar closed 370.585
-        self.assertEqual(hits, [{"symbol": "TSLA", "setups": ["orb"], "price": 370.58, "at": "10:00 AM",
-                                 "bar_start": "09:55", "bar_index": 5, "or_high": 370.49, "or_low": 363.64,
-                                 "pct_over": 0.03}])
-        self.assertEqual(counts["illiquid"], 1)            # AMC under the $5 floor
-
-    def test_stage_two_cap_takes_the_most_traded(self):
-        data, _ = scan.load_offline(WALL)
-        spark_like = {k: dict(v, h=None, l=None) for k, v in data.items()}
-        asked = []
-
-        def confirm(sym):
-            asked.append(sym)
-            return data[sym]
-        day, cut = D(2026, 10, 19), DT(2026, 10, 19, 10, 15)
-        hits, counts, _ = scan.scan_orb(spark_like, sorted(data), day, cut, 15, 0, 0, confirm, max_confirm=10)
-        self.assertEqual((counts["confirmed"], counts["unconfirmed"]), (10, counts["candidates"] - 10))
-        self.assertIn("TSLA", asked)                       # the most dollars traded by 10:15
-        self.assertLessEqual(len(hits), 10)
-        hits_all, _, _ = scan.scan_orb(spark_like, sorted(data), day, cut, 15, 0, 0, confirm, max_confirm=0)
-        self.assertEqual(len(hits_all), 42)
-        for h in hits:
-            self.assertIn(h, hits_all)
+            scan.orb_window(scan.parse_now("2026-10-28 10:15"), None, 7, until)
 
 
 class Cli(unittest.TestCase):
@@ -481,6 +497,10 @@ class Cli(unittest.TestCase):
         self.d = tempfile.mkdtemp()
         self.t = os.path.join(self.d, "trader")
         self.wl = os.path.join(self.t, "watchlist.json")
+        self.charts = os.path.join(self.d, "charts")       # the five real v8 charts, as a folder
+        os.makedirs(self.charts)
+        for path in V8.values():
+            shutil.copy(path, self.charts)
 
     def tearDown(self):
         shutil.rmtree(self.d)
@@ -491,104 +511,114 @@ class Cli(unittest.TestCase):
 
     def test_universe_daily_orb_end_to_end(self):
         uni = os.path.join(self.t, "universe.txt")
-        code, text, _ = run(["universe", "--offline", SYMDIR, "--out", uni])
+        code, out, _ = run(["universe", "--offline", NSE, "--out", uni])
         self.assertEqual(code, 0)
-        self.assertIn("Kept 17 US-listed", text)
-        with open(uni, encoding="utf-8") as fh:
-            lines = fh.read().splitlines()
-        self.assertEqual(len(lines), 17)
-        self.assertIn("BRK.B|Berkshire Hathaway Inc. New Common Stock", lines)
+        self.assertIn("Kept 2,286 EQ-series stocks, skipping the 2 and 5 % price bands.", out)
+        self.assertIn("219 series BE (trade-to-trade, no intraday)", out)
+        lines = text(uni).splitlines()
+        self.assertEqual(len(lines), 2286)
+        self.assertIn("M&M|Mahindra & Mahindra Limited|No Band", lines)
 
-        # daily over that universe with the fixture charts: only KO and TSLA are in both, so partial
-        code, text, _ = run(["daily", "--universe", uni, "--offline", DAILY, "--now", "2026-10-19 09:00",
-                             "--out", self.wl, "--min-volume", "0"])
+        code, out, _ = run(["universe", "--offline", NSE, "--index", "nifty50", "--out", uni])
+        self.assertIn("Kept 50 EQ-series stocks in the Nifty 50", out)
+        self.assertEqual(len(text(uni).splitlines()), 50)
+
+        # daily over the Nifty 50 with the 19-name fixture: partial, and said so
+        code, out, _ = run(["daily", "--universe", uni, "--offline", DAILY, "--now", "2026-10-29 09:00",
+                            "--out", self.wl])
         self.assertEqual(code, 0)
-        self.assertIn("Fetched 2 of 17 charts (15 failed or had no data)", text)
+        self.assertIn("Daily scan, Thu 2026-10-29 09:00 IST, closes through 2026-10-28", out)
+        self.assertIn("Fetched 19 of 50 charts (31 failed or had no data). 19 passed the liquidity filter "
+                      "(Rs 50.00+ and Rs 10 crore+ traded), 4 had no bar for 2026-10-28 (stale); 15 scanned.", out)
+        self.assertIn("  LT            Rs 3,801.30  RSI  56.4  20-day closing-high breakout, reclaimed", out)
         doc = self.read(self.wl)
-        self.assertEqual((doc["mode"], doc["universe"], doc["scanned"], doc["failed"]), ("daily", 17, 2, 15))
-        self.assertEqual(doc["hits"], [{"symbol": "KO", "setups": ["breakout_20d"], "price": 93.9,
-                                        "close_date": "2026-10-16", "rsi": 75.3, "volume": 3680307}])
-        self.assertEqual(doc["as_of"], "2026-10-16 close")
+        self.assertEqual((doc["mode"], doc["universe"], doc["scanned"], doc["failed"], doc["as_of"]),
+                         ("daily", 50, 15, 31, "2026-10-28 close"))
+        self.assertEqual(doc["filters"], {"min_price": 50.0, "min_turnover_inr": 1e8, "min_volume": 0})
+        self.assertEqual([h["symbol"] for h in doc["hits"]], ["INFY", "TCS", "LT", "M&M"])
 
-        # the reel's 10:15 scan
-        code, text, _ = run(["orb", "--offline", WALL, "--now", "2026-10-19 10:15", "--min-price", "0",
-                             "--out", self.wl])
+        # the 10:15 scan on Wed Oct 28
+        code, out, _ = run(["orb", "--offline", self.charts, "--now", "2026-10-28 10:15", "--out", self.wl])
         self.assertEqual(code, 0)
-        self.assertIn("42 of 231 charts closed above their opening-range high by 10:15 AM", text)
-        self.assertIn("10:15 AM  TSLA      $364.18  range 354.47 to 362.18  +0.55% over", text)
-        self.assertIn("not a list of stocks to buy", text)
+        self.assertIn("Opening-range breakout scan, Wed 2026-10-28 10:15 AM IST: 15-minute range "
+                      "(9:15 AM to 9:30 AM)", out)
+        self.assertIn("2 of 5 charts closed above their opening-range high by 10:15 AM", out)
+        self.assertIn("   9:45 AM  RELIANCE      Rs 1,199.60  range 1187.00 to 1194.80  +0.40% over", out)
+        self.assertIn("not a list of stocks to buy", out)
         doc = self.read(self.wl)
         self.assertEqual({k: doc[k] for k in ("created_by", "created_at", "mode", "as_of", "universe", "scanned",
-                                              "source")},
-                         {"created_by": "trader-scanner", "created_at": "2026-10-19T14:15:00Z", "mode": "orb",
-                          "as_of": "2026-10-19 10:15 ET", "universe": 234, "scanned": 231, "source": "yahoo"})
-        self.assertEqual(len(doc["hits"]), 42)
-        self.assertIn({"symbol": "TSLA", "setups": ["orb"], "price": 364.18, "at": "10:15 AM", "bar_start": "10:10",
-                       "bar_index": 8, "or_high": 362.18, "or_low": 354.47, "pct_over": 0.55}, doc["hits"])
+                                              "source", "exchange")},
+                         {"created_by": "trader-scanner", "created_at": "2026-10-28T04:45:00Z", "mode": "orb",
+                          "as_of": "2026-10-28 10:15 IST", "universe": 5, "scanned": 5, "source": "yahoo",
+                          "exchange": "NSE"})
 
-        # the hits read back as a watchlist, with --at instead of --now
-        code, text, _ = run(["orb", "--offline", WALL, "--at", "10:15", "--watchlist", self.wl, "--min-price", "0",
-                             "--json", "--no-write"])
+        # the hits read back as a watchlist, replayed with --at on the last day in the files
+        code, out, _ = run(["orb", "--offline", self.charts, "--at", "10:15", "--watchlist", self.wl,
+                            "--json", "--no-write"])
         self.assertEqual(code, 0)
-        out = json.loads(text)
-        self.assertEqual((out["universe"], out["scanned"], len(out["hits"])), (42, 42, 42))
+        res = json.loads(out)
+        self.assertEqual(res["as_of"], "2026-10-29 10:15 IST")
+        self.assertEqual((res["universe"], [h["symbol"] for h in res["hits"]]), (2, ["HDFCBANK", "RELIANCE"]))
 
-    def test_partial_stage_two_is_said(self):
-        """The networked path with a fake Yahoo that answers from the Oct 19 bundle."""
-        bundle = json.loads(scan._read_maybe_gz(WALL))
+    def test_networked_orb_with_a_fake_yahoo(self):
+        """The networked path, answered from the real spark and v8 files; stage 2 capped and said so."""
+        spark = json.loads(scan._read_maybe_gz(SPARK5))
+        by_sym = {r["symbol"]: r for r in spark["spark"]["result"]}
+        v8 = {}
+        for sym, path in V8.items():
+            with gzip.open(path, "rt", encoding="utf-8") as fh:
+                v8[sym] = fh.read()
         calls = []
 
         def get(path):
             calls.append(path)
             if path.startswith("/v7/finance/spark"):
-                res = []
-                for y in path.split("symbols=")[1].split("&")[0].split(","):
-                    r = ((bundle.get(y.replace("-", ".")) or {}).get("chart") or {}).get("result")
-                    if r:
-                        closes = r[0]["indicators"]["quote"][0].get("close", [])
-                        res.append({"symbol": y, "response": [dict(r[0], indicators={"quote": [{"close": closes}]})]})
-                return json.dumps({"spark": {"result": res, "error": None}})
-            return json.dumps(bundle[path.split("/chart/")[1].split("?")[0].replace("-", ".")])
-        old_get, old_sleep, real_now = scan.yahoo_get, scan.SLEEP, scan.parse_now
+                asked = urllib.parse.unquote(path.split("symbols=")[1].split("&")[0]).split(",")
+                return json.dumps({"spark": {"result": [by_sym[y] for y in asked if y in by_sym], "error": None}})
+            sym = scan.nse_symbol(urllib.parse.unquote(path.split("/chart/")[1].split("?")[0]))
+            if sym in v8:
+                return v8[sym]
+            return '{"chart":{"result":null,"error":{"code":"Not Found","description":"No data found"}}}'
+        old = scan.yahoo_get, scan.SLEEP, scan.utc_now
         scan.yahoo_get, scan.SLEEP = get, (lambda s: None)
-        scan.parse_now = lambda text: real_now(text or "2026-10-19 10:20")  # the machine clock, pinned
-        uni = os.path.join(self.d, "u.txt")
-        with open(uni, "w") as fh:
-            fh.write("\n".join(sorted(bundle)) + "\n")
+        scan.utc_now = lambda: DT(2026, 10, 28, 4, 50)     # the machine clock, pinned to 10:20 AM IST
         try:
-            code, text, _ = run(["orb", "--universe", uni, "--now", "2026-10-19 10:15", "--min-price", "0",
-                                 "--max-confirm", "10", "--no-write"])
+            code, out, _ = run(["orb", "--symbols", ",".join(NIFTY19 + ["ZZZZQX"]), "--now", "2026-10-28 10:15",
+                                "--max-confirm", "6", "--no-write"])
         finally:
-            scan.yahoo_get, scan.SLEEP, scan.parse_now = old_get, old_sleep, real_now
+            scan.yahoo_get, scan.SLEEP, scan.utc_now = old
         self.assertEqual(code, 0)
-        self.assertIn("231 usable; 95 candidates, 10 confirmed", text)
-        self.assertIn("PARTIAL: 85 more candidates were not checked", text)
-        self.assertIn("5 of the 10 checked charts closed above their opening-range high by 10:15 AM", text)
-        self.assertEqual(sum(1 for c in calls if c.startswith("/v8/")), 10)
-        self.assertEqual(sum(1 for c in calls if c.startswith("/v7/")), 12)   # 234 symbols, 20 a request
+        self.assertIn("Fetched 19 of 20 charts", out)
+        self.assertIn("19 usable; 14 candidates", out)
+        self.assertIn("PARTIAL: 8 more candidates were not checked", out)
+        self.assertEqual(sum(1 for c in calls if c.startswith("/v8/")), 6)
+        self.assertEqual(sum(1 for c in calls if c.startswith("/v7/")), 1)
+        self.assertIn("M%26M.NS", calls[0])
         self.assertTrue(all("range=1d&interval=5m" in c for c in calls))
 
     def test_plain_messages_and_exit_codes(self):
-        code, _, err = run(["orb", "--offline", WALL, "--now", "2026-10-17 10:15", "--out", self.wl])
+        code, _, err = run(["orb", "--offline", self.charts, "--now", "2026-10-31 10:15", "--out", self.wl])
         self.assertEqual(code, 1)
-        self.assertIn("No session on Sat 2026-10-17 (weekend)", err)
+        self.assertIn("No session on Sat 2026-10-31 (weekend)", err)
         self.assertNotIn("Traceback", err)
         self.assertFalse(os.path.exists(self.wl))
-        code, _, err = run(["orb", "--offline", WALL, "--now", "2026-10-19 09:44", "--out", self.wl])
-        self.assertIn("after 9:50 AM", err)
+        code, _, err = run(["orb", "--offline", self.charts, "--now", "2026-10-20 10:15"])
+        self.assertIn("NSE holiday: Dussehra", err)
+        code, _, err = run(["orb", "--offline", self.charts, "--now", "2026-10-28 09:30", "--out", self.wl])
+        self.assertIn("after 9:35 AM", err)
         cfg = os.path.join(self.t, "config.json")
         os.makedirs(self.t)
         with open(cfg, "w") as fh:
             json.dump({"no_entries_after": "10:00"}, fh)
-        code, _, err = run(["orb", "--offline", WALL, "--now", "2026-10-19 10:15", "--config", cfg])
+        code, _, err = run(["orb", "--offline", self.charts, "--now", "2026-10-28 10:15", "--config", cfg])
         self.assertEqual(code, 1)
         self.assertIn("expired", err)
-        code, _, err = run(["orb", "--offline", WALL])
+        code, _, err = run(["orb", "--offline", self.charts])
         self.assertIn("--at HH:MM", err)
-        code, text, _ = run(["orb", "--offline", WALL, "--now", "2026-10-19 10:10", "--symbols", "TSLA",
-                             "--out", self.wl])
+        code, out, _ = run(["orb", "--offline", self.charts, "--now", "2026-10-28 09:40", "--symbols", "RELIANCE",
+                            "--out", self.wl])
         self.assertEqual(code, 1)                          # no breakout yet, but the empty list is written
-        self.assertIn("No chart closed above its opening-range high by 10:10 AM", text)
+        self.assertIn("No chart closed above its opening-range high by 9:40 AM", out)
         self.assertEqual(self.read(self.wl)["hits"], [])
         code, _, err = run(["daily", "--universe", os.path.join(self.d, "nope.txt")])
         self.assertEqual(code, 1)
@@ -601,45 +631,44 @@ class Cli(unittest.TestCase):
         code, _, err = run(["daily", "--offline", empty])
         self.assertEqual(code, 1)
         self.assertIn("no symbols to scan", err)
+        code, _, err = run(["universe", "--offline", self.d])
+        self.assertIn("no EQUITY_L.csv", err)
 
-    def test_offline_folder_of_v8_files(self):
-        folder = os.path.join(self.d, "charts")
-        os.makedirs(folder)
-        data, _ = scan.load_offline(WALL)
-        bundle = json.loads(scan._read_maybe_gz(WALL))
-        for sym in ("TSLA", "AAPL", "KO", "SQ"):
-            with open(os.path.join(folder, sym + ".json"), "w") as fh:
-                json.dump(bundle[sym], fh)
-        code, text, _ = run(["orb", "--offline", folder, "--now", "2026-10-19 10:15", "--no-write", "--json"])
-        out = json.loads(text)
-        self.assertEqual((out["universe"], out["scanned"], out["failed"]), (4, 3, 1))
-        self.assertEqual([h["symbol"] for h in out["hits"]], ["AAPL", "TSLA"])
+    def test_index_preset_on_daily(self):
+        code, out, _ = run(["daily", "--index", "nifty50", "--lists", NSE, "--offline", DAILY,
+                            "--now", "2026-10-29 09:00", "--json", "--no-write"])
+        res = json.loads(out)
+        self.assertEqual((res["index"], res["universe"], res["failed"]), ("nifty50", 50, 31))
+
+    def test_offline_folder_names_charts_by_their_symbol(self):
+        data, errors = scan.load_offline(self.charts)
+        self.assertEqual(sorted(data), ["HDFCBANK", "INFY", "M&M", "RELIANCE", "SBIN"])
+        with open(os.path.join(self.charts, "GONE.json"), "w") as fh:
+            fh.write('{"chart":{"result":null,"error":{"code":"Not Found","description":"No data found"}}}')
+        code, out, _ = run(["orb", "--offline", self.charts, "--now", "2026-10-28 10:15", "--no-write", "--json"])
+        res = json.loads(out)
+        self.assertEqual((res["universe"], res["scanned"], res["failed"]), (6, 5, 1))
         self.assertEqual(code, 0)
 
     def test_symbol_lists(self):
         txt = os.path.join(self.d, "list.txt")
         with open(txt, "w") as fh:
-            fh.write("# my list\nTSLA|Tesla, Inc. - Common Stock\nko\n\nTSLA\n")
-        self.assertEqual(scan.symbols_from_file(txt), ["TSLA", "KO", "TSLA"])
+            fh.write("# my list\nRELIANCE|Reliance Industries Limited|No Band\nm&m\n\nsbin.ns\nRELIANCE\n")
+        self.assertEqual(scan.symbols_from_file(txt), ["RELIANCE", "M&M", "SBIN.NS", "RELIANCE"])
         js = os.path.join(self.d, "wl.json")
         with open(js, "w") as fh:
-            json.dump({"hits": [{"symbol": "tsla"}, {"symbol": "KO"}]}, fh)
-        self.assertEqual(scan.symbols_from_file(js), ["TSLA", "KO"])
-        code, text, _ = run(["daily", "--offline", DAILY, "--watchlist", txt, "--now", "2026-10-19 09:00",
-                             "--json", "--no-write", "--min-volume", "0"])
-        out = json.loads(text)
-        self.assertEqual((out["universe"], out["scanned"]), (2, 2))
-        code, text, _ = run(["daily", "--offline", DAILY, "--limit", "3", "--now", "2026-10-19 09:00", "--json",
-                             "--no-write", "--min-volume", "0"])
-        self.assertEqual(json.loads(text)["universe"], 3)
+            json.dump({"hits": [{"symbol": "infy"}, {"symbol": "TCS"}]}, fh)
+        self.assertEqual(scan.symbols_from_file(js), ["INFY", "TCS"])
+        code, out, _ = run(["daily", "--offline", DAILY, "--watchlist", txt, "--now", "2026-10-29 09:00",
+                            "--json", "--no-write"])
+        self.assertEqual(json.loads(out)["universe"], 3)   # RELIANCE, M&M, SBIN (.NS dropped, no repeats)
+        code, out, _ = run(["daily", "--offline", DAILY, "--limit", "3", "--now", "2026-10-29 09:00", "--json",
+                            "--no-write"])
+        self.assertEqual(json.loads(out)["universe"], 3)
 
-    def test_daily_json(self):
-        code, text, _ = run(["daily", "--offline", DAILY, "--now", "2026-10-19 09:00", "--json", "--no-write",
-                             "--min-volume", "0", "--min-price", "0"])
-        self.assertEqual(code, 0)
-        out = json.loads(text)
-        self.assertEqual(len(out["hits"]), 15)
-        self.assertEqual(out["note"], "A scan is a list of charts that match a rule, not a list of stocks to buy.")
+    def test_calendar_warning_is_written(self):
+        code, out, _ = run(["daily", "--offline", DAILY, "--now", "2027-01-04 09:00", "--json", "--no-write"])
+        self.assertIn("2027", json.loads(out)["warning"])
 
 
 if __name__ == "__main__":
